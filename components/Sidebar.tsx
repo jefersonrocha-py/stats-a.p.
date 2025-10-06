@@ -4,8 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUIStore } from "@store/ui";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMap, faChartPie, faGear } from "@fortawesome/free-solid-svg-icons";
-import { useEffect } from "react";
+import {
+  faMap,
+  faChartPie,
+  faGear,
+  faShieldHalved, // <- ícone "Administrador"
+} from "@fortawesome/free-solid-svg-icons";
+import { useEffect, useState } from "react";
 
 type ItemProps = {
   href: string;
@@ -74,9 +79,14 @@ function Hamburger({
   );
 }
 
+type MeResp =
+  | { ok: true; user: { id: string | number; name: string; email: string; role: "SUPERADMIN" | "ADMIN" | "USER" } }
+  | { ok: false; error: string };
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
+  const [role, setRole] = useState<"SUPERADMIN" | "ADMIN" | "USER" | null>(null);
 
   // Fechar off-canvas no ESC (mobile)
   useEffect(() => {
@@ -86,6 +96,25 @@ export default function Sidebar() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [setSidebarOpen]);
+
+  // Descobrir role via /api/me
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/me", { cache: "no-store" });
+        const j: MeResp = await r.json();
+        if (!alive) return;
+        if ("ok" in j && j.ok) setRole(j.user.role);
+        else setRole(null);
+      } catch {
+        if (alive) setRole(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const links = [
     { href: "/", icon: faMap, label: "Mapa" },
@@ -142,7 +171,7 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* Navegação */}
+        {/* Navegação principal */}
         <nav className="p-2 space-y-1 overflow-y-auto">
           {links.map((l) => (
             <NavItem
@@ -154,6 +183,26 @@ export default function Sidebar() {
               active={isActive(l.href)}
             />
           ))}
+
+          {/* Seção Administrador (somente SUPERADMIN) */}
+          {role === "SUPERADMIN" && (
+            <>
+              {sidebarOpen ? (
+                <div className="px-3 mt-4 text-xs uppercase tracking-wide opacity-70">
+                  Administrador
+                </div>
+              ) : (
+                <div className="px-1 mt-4" />
+              )}
+              <NavItem
+                href="/admin"
+                icon={faShieldHalved}
+                label="Painel"
+                open={sidebarOpen}
+                active={isActive("/admin")}
+              />
+            </>
+          )}
         </nav>
       </aside>
 
@@ -200,6 +249,21 @@ export default function Sidebar() {
               onClick={() => setSidebarOpen(false)}
             />
           ))}
+
+          {/* Admin no mobile */}
+          {role === "SUPERADMIN" && (
+            <>
+              <div className="px-3 mt-4 text-xs uppercase tracking-wide opacity-70">Administrador</div>
+              <NavItem
+                href="/admin"
+                icon={faShieldHalved}
+                label="Painel"
+                open={true}
+                active={isActive("/admin")}
+                onClick={() => setSidebarOpen(false)}
+              />
+            </>
+          )}
         </nav>
       </aside>
 

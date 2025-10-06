@@ -57,8 +57,12 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
+  role         String   @default("USER") // "SUPERADMIN" | "ADMIN" | "USER"
   createdAt    DateTime @default(now())
+
+  @@index([role])
 }
+
 
 model GdmsToken {
   id          Int      @id @default(1)  // sempre 1

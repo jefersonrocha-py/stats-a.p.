@@ -1,55 +1,39 @@
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
+import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { z } from "zod";
+import { loginSchema } from "../../../../lib/validatorsAuth.ts"; // <-- note o ".ts"
 import bcrypt from "bcryptjs";
-import { SignJWT } from "jose";
-
-// 👉 Schema inline
-const loginSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(1, "Informe a senha"),
-});
-
-// helpers JWT (mesmo que em lib/auth.ts, mas enxuto)
-const secret = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
-const expiresDays = Number(process.env.JWT_EXPIRES_DAYS || 7);
-function authCookie(token: string) {
-  const maxAge = expiresDays * 24 * 60 * 60;
-  return `auth=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}; ${
-    process.env.NODE_ENV === "production" ? "Secure;" : ""
-  }`;
-}
+import { signAuthToken } from "../../../../lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const { email, password } = loginSchema.parse(body);
+    const body = await req.json();
+    const data = loginSchema.parse(body);
 
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (!user) return Response.json({ error: "INVALID_CREDENTIALS" }, { status: 401 });
+    const user = await prisma.user.findUnique({ where: { email: data.email } });
+    if (!user) return NextResponse.json({ error: "INVALID_CREDENTIALS" }, { status: 401 });
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return Response.json({ error: "INVALID_CREDENTIALS" }, { status: 401 });
+    const ok = await bcrypt.compare(data.password, user.passwordHash);
+    if (!ok) return NextResponse.json({ error: "INVALID_CREDENTIALS" }, { status: 401 });
 
-    const token = await new SignJWT({ sub: String(user.id), email: user.email })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime(`${expiresDays}d`)
-      .sign(secret);
+    const token = await signAuthToken({
+      sub: String(user.id),
+      email: user.email,
+      name: user.name,
+      role: (user.role as any) || "USER",
+    });
 
-    return new Response(
-      JSON.stringify({ ok: true, user: { id: user.id, name: user.name, email: user.email } }),
-      {
-        status: 200,
-        headers: { "Set-Cookie": authCookie(token), "Content-Type": "application/json" },
-      }
-    );
+    const res = NextResponse.json({ ok: true });
+    res.cookies.set("auth", token, {
+      httpOnly: true, sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/", maxAge: 60 * 60 * 24 * 7,
+    });
+    return res;
   } catch (e: any) {
     if (e?.name === "ZodError") {
-      return Response.json({ error: "VALIDATION_FAILED", details: e.errors }, { status: 400 });
+      return NextResponse.json({ error: "VALIDATION_FAILED", details: e.errors }, { status: 400 });
     }
-    return Response.json({ error: "AUTH_ERROR" }, { status: 500 });
+    console.error("POST /api/auth/login error:", e);
+    return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

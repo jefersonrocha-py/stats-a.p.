@@ -7,7 +7,6 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
 
 const PUBLIC_PATHS = [
   "/login",
-  "/register",
   "/api/auth/login",
   "/api/auth/register",
   "/api/auth/logout",

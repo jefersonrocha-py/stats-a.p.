@@ -1,30 +1,27 @@
 import { SignJWT, jwtVerify } from "jose";
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
-const expiresDays = Number(process.env.JWT_EXPIRES_DAYS || 7);
+const issuer = "etherium";
+const audience = "etherium-users";
 
-export async function signAuthToken(payload: { sub: string; email: string }) {
+export type JwtPayload = {
+  sub: string;           // user id
+  email: string;
+  name: string;
+  role: "SUPERADMIN" | "ADMIN" | "USER";
+};
+
+export async function signAuthToken(payload: JwtPayload) {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(`${expiresDays}d`)
+    .setIssuer(issuer)
+    .setAudience(audience)
+    .setExpirationTime("7d")
     .sign(secret);
 }
 
 export async function verifyAuthToken(token: string) {
-  const { payload } = await jwtVerify(token, secret);
-  return payload as { sub: string; email: string; iat: number; exp: number };
-}
-
-export function authCookie(token: string) {
-  const maxAge = expiresDays * 24 * 60 * 60;
-  return `auth=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}; ${
-    process.env.NODE_ENV === "production" ? "Secure;" : ""
-  }`;
-}
-
-export function clearAuthCookie() {
-  return `auth=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; ${
-    process.env.NODE_ENV === "production" ? "Secure;" : ""
-  }`;
+  const { payload } = await jwtVerify(token, secret, { issuer, audience });
+  return payload as unknown as JwtPayload;
 }
