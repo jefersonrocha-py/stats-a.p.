@@ -37,29 +37,40 @@ export default function TopBar() {
 
   // ===== Fullscreen do MAPA (#map-root)
   const [isFs, setIsFs] = useState(false);
+
+  // helper para checar se #map-root está em fullscreen
+  function isElementFullscreen(el: HTMLElement | null): boolean {
+    if (!el) return false;
+    const current = document.fullscreenElement;
+    // garante boolean puro
+    return Boolean(current && (current === el || el.contains(current)));
+  }
+
   useEffect(() => {
     const handler = () => {
       const el = document.getElementById("map-root");
-      const current = document.fullscreenElement;
-      setIsFs(!!el && (current === el || (current && el?.contains(current))));
+      setIsFs(isElementFullscreen(el));
     };
     document.addEventListener("fullscreenchange", handler);
     return () => document.removeEventListener("fullscreenchange", handler);
   }, []);
 
   const toggleFullscreen = useCallback(async () => {
-    const el = document.getElementById("map-root") as any;
+    const el = document.getElementById("map-root") as HTMLElement | null;
     if (!el) return;
     try {
-      const current = document.fullscreenElement;
-      const isTarget = current === el || (current && el.contains(current));
-      if (!current || !isTarget) {
+      const currentlyFs = isElementFullscreen(el);
+      if (!currentlyFs) {
+        // entrar em fullscreen
+        const anyEl = el as any;
         if (el.requestFullscreen) await el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+        else if (anyEl.webkitRequestFullscreen) await anyEl.webkitRequestFullscreen();
         setIsFs(true);
       } else {
+        // sair de fullscreen
+        const anyDoc = document as any;
         if (document.exitFullscreen) await document.exitFullscreen();
-        else (document as any).webkitExitFullscreen?.();
+        else if (anyDoc.webkitExitFullscreen) await anyDoc.webkitExitFullscreen();
         setIsFs(false);
       }
     } catch {
@@ -127,7 +138,7 @@ export default function TopBar() {
               {/* Fullscreen do mapa */}
               <button
                 onClick={toggleFullscreen}
-                className="h-8 w-8 sm:h-9 sm:w-9 grid place-items-center rounded-lg bg-black/5 dark:bg:white/10 hover:bg-black/10 dark:hover:bg-white/20"
+                className="h-8 w-8 sm:h-9 sm:w-9 grid place-items-center rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
                 title={isFs ? "Sair do Fullscreen do mapa" : "Fullscreen do mapa"}
                 aria-label="Alternar fullscreen do mapa"
               >

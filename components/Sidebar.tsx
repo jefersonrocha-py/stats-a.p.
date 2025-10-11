@@ -8,12 +8,29 @@ import {
   faMap,
   faChartPie,
   faGear,
-  faShieldHalved, // <- ícone "Administrador"
+  faShieldHalved,
 } from "@fortawesome/free-solid-svg-icons";
 import { useEffect, useState } from "react";
+import type { UrlObject } from "url";
+
+// ==== Tipos ====
+type Role = "SUPERADMIN" | "ADMIN" | "USER";
+type MeResp =
+  | { ok: true; user: { id: string | number; name: string; email: string; role: Role } }
+  | { ok: false; error: string };
+
+// href SEMPRE como UrlObject para agradar typedRoutes
+type NavLink = {
+  /** string para cálculo de ativo */
+  path: string;
+  /** href para <Link> */
+  href: UrlObject;
+  icon: any;
+  label: string;
+};
 
 type ItemProps = {
-  href: string;
+  href: UrlObject;
   icon: any;
   label: string;
   open: boolean;
@@ -27,6 +44,7 @@ function NavItem({ href, icon, label, open, active, onClick }: ItemProps) {
       href={href}
       title={label}
       onClick={onClick}
+      prefetch={false}
       className={`group flex items-center gap-3 px-3 py-2 rounded-lg
         hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400
         ${active ? "bg-white/10" : ""}
@@ -34,8 +52,7 @@ function NavItem({ href, icon, label, open, active, onClick }: ItemProps) {
       aria-current={active ? "page" : undefined}
     >
       <FontAwesomeIcon className="w-4 h-4 shrink-0" icon={icon} />
-      {open && <span className="text-sm">{label}</span>}
-      {!open && <span className="sr-only">{label}</span>}
+      {open ? <span className="text-sm">{label}</span> : <span className="sr-only">{label}</span>}
     </Link>
   );
 }
@@ -79,16 +96,12 @@ function Hamburger({
   );
 }
 
-type MeResp =
-  | { ok: true; user: { id: string | number; name: string; email: string; role: "SUPERADMIN" | "ADMIN" | "USER" } }
-  | { ok: false; error: string };
-
 export default function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
-  const [role, setRole] = useState<"SUPERADMIN" | "ADMIN" | "USER" | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
 
-  // Fechar off-canvas no ESC (mobile)
+  // ESC fecha off-canvas (mobile)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSidebarOpen(false);
@@ -116,14 +129,15 @@ export default function Sidebar() {
     };
   }, []);
 
-  const links = [
-    { href: "/", icon: faMap, label: "Mapa" },
-    { href: "/dashboard", icon: faChartPie, label: "Dashboard" },
-    { href: "/settings", icon: faGear, label: "Configurações" },
+  // Lista de links (sempre UrlObject)
+  const links: NavLink[] = [
+    { path: "/",          href: { pathname: "/" },          icon: faMap,      label: "Mapa" },
+    { path: "/dashboard", href: { pathname: "/dashboard" }, icon: faChartPie, label: "Dashboard" },
+    { path: "/settings",  href: { pathname: "/settings" },  icon: faGear,     label: "Configurações" },
   ];
 
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const isActive = (path: string) =>
+    path === "/" ? pathname === "/" : pathname.startsWith(path);
 
   return (
     <>
@@ -175,12 +189,12 @@ export default function Sidebar() {
         <nav className="p-2 space-y-1 overflow-y-auto">
           {links.map((l) => (
             <NavItem
-              key={l.href}
+              key={l.path}
               href={l.href}
               icon={l.icon}
               label={l.label}
               open={sidebarOpen}
-              active={isActive(l.href)}
+              active={isActive(l.path)}
             />
           ))}
 
@@ -195,7 +209,7 @@ export default function Sidebar() {
                 <div className="px-1 mt-4" />
               )}
               <NavItem
-                href="/admin"
+                href={{ pathname: "/admin" }}
                 icon={faShieldHalved}
                 label="Painel"
                 open={sidebarOpen}
@@ -206,7 +220,7 @@ export default function Sidebar() {
         </nav>
       </aside>
 
-      {/* MOBILE (off-canvas com X) */}
+      {/* MOBILE (off-canvas) */}
       <aside
         className={`
           fixed left-0 top-0 z-50 h-screen w-72 text-white
@@ -220,7 +234,6 @@ export default function Sidebar() {
         aria-hidden={!sidebarOpen}
       >
         <div className="p-3 flex items-center gap-2 border-b border-white/10 min-h-[56px]">
-          {/* Botão fechar (X) */}
           <button
             onClick={() => setSidebarOpen(false)}
             aria-label="Fechar menu"
@@ -240,22 +253,21 @@ export default function Sidebar() {
         <nav className="p-2 space-y-1 overflow-y-auto">
           {links.map((l) => (
             <NavItem
-              key={l.href}
+              key={`m-${l.path}`}
               href={l.href}
               icon={l.icon}
               label={l.label}
               open={true}
-              active={isActive(l.href)}
+              active={isActive(l.path)}
               onClick={() => setSidebarOpen(false)}
             />
           ))}
 
-          {/* Admin no mobile */}
           {role === "SUPERADMIN" && (
             <>
               <div className="px-3 mt-4 text-xs uppercase tracking-wide opacity-70">Administrador</div>
               <NavItem
-                href="/admin"
+                href={{ pathname: "/admin" }}
                 icon={faShieldHalved}
                 label="Painel"
                 open={true}
@@ -270,9 +282,7 @@ export default function Sidebar() {
       {/* Empurrador do conteúdo no desktop */}
       <div
         aria-hidden
-        className={`hidden md:block transition-[width] duration-300 ${
-          sidebarOpen ? "w-64" : "w-16"
-        }`}
+        className={`hidden md:block transition-[width] duration-300 ${sidebarOpen ? "w-64" : "w-16"}`}
       />
     </>
   );
