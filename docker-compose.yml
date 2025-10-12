@@ -36,7 +36,7 @@ services:
     ports:
       - "${HOST_PORT}:${PORT}"
 
-    # IMPORTANTe: persistência do SQLite em /app/data
+    # Persistência do SQLite em /app/data
     volumes:
       - appdata:/app/data
 
@@ -62,6 +62,12 @@ services:
       GDMS_PAGE_SIZE: ${GDMS_PAGE_SIZE}
       GDMS_SHOW: ${GDMS_SHOW}
 
+      # >>> garante que o cron chama o web correto
+      APP_BASE_URL: "http://web:${PORT}"
+      # opcionais (o script já tem esses defaults):
+      # SYNC_PATH: "/api/integrations/gdms/sync"
+      # SYNC_INTERVAL_MS: "300000"
+
     depends_on:
       web:
         condition: service_started
@@ -72,7 +78,8 @@ services:
     networks:
       - web
 
-    command: ["node", "./scripts/gdms-cron.mjs"]
+    # >>> bypass do entrypoint da imagem para rodar apenas o cron
+    entrypoint: ["node", "scripts/gdms-cron.mjs"]
 
 volumes:
   appdata:

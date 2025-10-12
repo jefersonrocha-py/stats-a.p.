@@ -10,9 +10,6 @@ import {
   ResponsiveContainer,
   Legend,
   Label,
-  RadialBarChart,
-  RadialBar,
-  PolarAngleAxis,
 } from "recharts";
 
 type Variant = "donut" | "gauge" | "radial";
@@ -112,8 +109,10 @@ export default function DonutChart({
   const TooltipBox = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
     if (!active || !payload || payload.length === 0) return null;
     const p = payload[0];
-    const name: Slice = p?.name;
-    const value: number = p?.value ?? p?.pct ?? 0;
+    const name: string | undefined = p?.name;
+    if (name !== "UP" && name !== "DOWN" && name !== "UNKNOWN") return null;
+
+    const value: number = p?.value ?? 0;
     const pct =
       name === "UP" ? upPct : name === "DOWN" ? downPct : name === "UNKNOWN" ? unkPct : 0;
     const label =
@@ -308,6 +307,7 @@ export default function DonutChart({
           <Pie
             dataKey="value"
             data={gauge}
+            nameKey="name"
             cx="50%"
             cy="80%"
             startAngle={180}
@@ -322,10 +322,11 @@ export default function DonutChart({
             onMouseLeave={() => setHoverBand(null)}
           >
             <Cell
+              name="UP"
               fill={`url(#${ids.upGrad})`}
               style={{ transition: "filter 120ms ease", filter: hoverBand === "UP" ? `url(#${ids.glowUp})` : "none" } as any}
             />
-            <Cell fill="transparent" />
+            <Cell name="rest" fill="transparent" />
             <Label
               position="center"
               content={({ viewBox }) => {
@@ -381,25 +382,36 @@ export default function DonutChart({
     );
   }
 
-  // -------- RADIAL --------
+  // -------- RADIAL (anéis com Pie) --------
   function RenderRadial() {
-    const upBand = Math.min(90, Math.floor(height * 0.36));
-    const downBand = Math.max(0, upBand - 20);
-    const unkBand = Math.max(0, downBand - 20);
+    // Geometria dos anéis (largura e espaçamento escalam com a altura)
+    const band = Math.max(14, Math.floor(height * 0.06));
+    const gap = Math.max(4, Math.floor(height * 0.015));
+    const maxOuter = Math.min(110, Math.floor(height * 0.44));
 
-    const radialDataBase = [
-      { name: "UP", pct: upPct, fill: `url(#${ids.upGrad})` },
-      { name: "DOWN", pct: downPct, fill: `url(#${ids.downGrad})` },
+    const upOuter = maxOuter;
+    const upInner = upOuter - band;
+
+    const downOuter = upInner - gap;
+    const downInner = Math.max(0, downOuter - band);
+
+    const unkOuter = downInner - gap;
+    const unkInner = Math.max(0, unkOuter - band);
+
+    // Dados “valor vs resto” por anel (em %)
+    const ring = (name: Slice, pct: number) => [
+      { key: name, value: Math.max(0, Math.min(100, pct)) },
+      { key: "rest", value: Math.max(0, 100 - Math.max(0, Math.min(100, pct))) },
     ];
-    const radialData =
-      unknown > 0
-        ? [...radialDataBase, { name: "UNKNOWN", pct: unkPct, fill: `url(#${ids.unkGrad})` }]
-        : radialDataBase;
+
+    const upRing = ring("UP", upPct);
+    const downRing = ring("DOWN", downPct);
+    const unkRing = ring("UNKNOWN", unkPct);
 
     return (
       <div className={`relative w-full ${className || ""}`} style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
-          <RadialBarChart innerRadius="30%" outerRadius="100%" startAngle={90} endAngle={-270} data={radialData}>
+          <PieChart>
             <defs>
               <linearGradient id={ids.upGrad} x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#34d399" />
@@ -424,54 +436,94 @@ export default function DonutChart({
               </filter>
             </defs>
 
-            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-
-            <RadialBar
-              dataKey="pct"
-              background
-              cornerRadius={16}
-              data={radialData.filter((d) => d.name === "UP")}
-              fill={radialData.find((d) => d.name === "UP")?.fill}
-              innerRadius={downBand}
-              outerRadius={upBand}
+            {/* Anel UP */}
+            <Pie
+              data={upRing}
+              dataKey="value"
+              nameKey="key"
+              cx="50%"
+              cy="50%"
+              innerRadius={upInner}
+              outerRadius={upOuter}
+              startAngle={90}
+              endAngle={-270}
+              isAnimationActive
+              paddingAngle={0}
               onMouseEnter={() => setHoverBand("UP")}
               onMouseLeave={() => setHoverBand(null)}
-              style={{ filter: hoverBand === "UP" ? `url(#${ids.glowUp})` : "none", transition: "filter 120ms ease" } as any}
-            />
-            <RadialBar
-              dataKey="pct"
-              background
+              stroke="none"
               cornerRadius={16}
-              data={radialData.filter((d) => d.name === "DOWN")}
-              fill={radialData.find((d) => d.name === "DOWN")?.fill}
-              innerRadius={unkBand}
-              outerRadius={downBand - 4}
+            >
+              <Cell
+                name="UP"
+                fill={`url(#${ids.upGrad})`}
+                style={{ filter: hoverBand === "UP" ? `url(#${ids.glowUp})` : "none", transition: "filter 120ms ease" } as any}
+              />
+              <Cell name="rest" fill="rgba(0,0,0,0.08)" />
+            </Pie>
+
+            {/* Anel DOWN */}
+            <Pie
+              data={downRing}
+              dataKey="value"
+              nameKey="key"
+              cx="50%"
+              cy="50%"
+              innerRadius={downInner}
+              outerRadius={downOuter}
+              startAngle={90}
+              endAngle={-270}
+              isAnimationActive
+              paddingAngle={0}
               onMouseEnter={() => setHoverBand("DOWN")}
               onMouseLeave={() => setHoverBand(null)}
-              style={{ filter: hoverBand === "DOWN" ? `url(#${ids.glowDown})` : "none", transition: "filter 120ms ease" } as any}
-            />
+              stroke="none"
+              cornerRadius={16}
+            >
+              <Cell
+                name="DOWN"
+                fill={`url(#${ids.downGrad})`}
+                style={{ filter: hoverBand === "DOWN" ? `url(#${ids.glowDown})` : "none", transition: "filter 120ms ease" } as any}
+              />
+              <Cell name="rest" fill="rgba(0,0,0,0.08)" />
+            </Pie>
+
+            {/* Anel UNKNOWN (opcional) */}
             {unknown > 0 && (
-              <RadialBar
-                dataKey="pct"
-                background
-                cornerRadius={16}
-                data={radialData.filter((d) => d.name === "UNKNOWN")}
-                fill={radialData.find((d) => d.name === "UNKNOWN")?.fill}
-                innerRadius={unkBand - 18}
-                outerRadius={unkBand - 4}
+              <Pie
+                data={unkRing}
+                dataKey="value"
+                nameKey="key"
+                cx="50%"
+                cy="50%"
+                innerRadius={unkInner}
+                outerRadius={unkOuter}
+                startAngle={90}
+                endAngle={-270}
+                isAnimationActive
+                paddingAngle={0}
                 onMouseEnter={() => setHoverBand("UNKNOWN")}
                 onMouseLeave={() => setHoverBand(null)}
-                style={{ filter: hoverBand === "UNKNOWN" ? `url(#${ids.glowUnk})` : "none", transition: "filter 120ms ease" } as any}
-              />
+                stroke="none"
+                cornerRadius={16}
+              >
+                <Cell
+                  name="UNKNOWN"
+                  fill={`url(#${ids.unkGrad})`}
+                  style={{ filter: hoverBand === "UNKNOWN" ? `url(#${ids.glowUnk})` : "none", transition: "filter 120ms ease" } as any}
+                />
+                <Cell name="rest" fill="rgba(0,0,0,0.08)" />
+              </Pie>
             )}
 
             <Tooltip content={TooltipBox as any} />
             {showLegend && (
               <Legend verticalAlign="bottom" align="center" payload={legendPayload as any} wrapperStyle={{ paddingTop: 8 }} />
             )}
-          </RadialBarChart>
+          </PieChart>
         </ResponsiveContainer>
 
+        {/* Centro */}
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className={`text-center leading-tight ${pulse ? "dc-pulse" : ""}`}>
             <div className="text-[22px] font-bold text-emerald-500">{fmtPct(upPct)}</div>
