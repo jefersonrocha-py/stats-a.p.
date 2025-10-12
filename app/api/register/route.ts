@@ -1,10 +1,11 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import { NextResponse } from "next/server";
 import { prisma } from "@lib/prisma";
 import { registerSchema } from "@lib/validatorsAuth";
 import { mapPrismaError } from "@lib/prismaErrors";
-import { signAuthToken, authCookie } from "@lib/auth";
+import { signAuthToken } from "@lib/auth";
 import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
@@ -13,18 +14,39 @@ export async function POST(req: Request) {
     const { name, email, password } = registerSchema.parse(body);
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({ data: { name, email: email.toLowerCase(), passwordHash } });
+
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email: email.toLowerCase(),
+        passwordHash,
+      },
+    });
 
     const token = await signAuthToken({ sub: String(user.id), email: user.email });
-    return new Response(JSON.stringify({ ok: true, user: { id: user.id, name: user.name, email: user.email } }), {
-      status: 201,
-      headers: { "Set-Cookie": authCookie(token), "Content-Type": "application/json" }
+
+    const maxAgeDays = Number(process.env.JWT_EXPIRES_DAYS ?? 7);
+    const res = NextResponse.json(
+      { ok: true, user: { id: user.id, name: user.name, email: user.email } },
+      { status: 201 }
+    );
+
+    res.cookies.set({
+      name: "auth",
+      value: token,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * maxAgeDays,
     });
+
+    return res;
   } catch (e: any) {
     if (e?.name === "ZodError") {
-      return Response.json({ error: "VALIDATION_FAILED", details: e.errors }, { status: 400 });
+      return NextResponse.json({ error: "VALIDATION_FAILED", details: e.errors }, { status: 400 });
     }
     const mapped = mapPrismaError(e);
-    return Response.json(mapped.body, { status: mapped.status });
+    return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }
