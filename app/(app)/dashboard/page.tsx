@@ -13,8 +13,11 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [q, setQ] = useState("");
 
+  // Controles do gráfico
+  const [chartVariant, setChartVariant] = useState<"donut" | "gauge" | "radial">("donut");
+  const [showLegend, setShowLegend] = useState(true);
+
   async function load() {
-    // aceita array (formato antigo) OU objeto { items: [...] } (formato novo)
     const [lRaw, s] = await Promise.all([
       api<any>("/api/antennas?take=500"),
       api<Stats>("/api/stats"),
@@ -42,7 +45,6 @@ export default function DashboardPage() {
     return disconnect;
   }, []);
 
-  // Busca da TopBar (Enter)
   useEffect(() => {
     const handler = (e: any) => setQ((e.detail?.q || "").toLowerCase());
     window.addEventListener("search-antennas", handler as any);
@@ -59,7 +61,6 @@ export default function DashboardPage() {
     [list, q]
   );
 
-  // Normaliza métricas para o DashboardCards (inclui upPct/downPct)
   const cardsData = useMemo(() => {
     if (!stats) return null;
 
@@ -128,7 +129,6 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Dashboard</h1>
 
-      {/* Cards */}
       {cardsData && (
         <DashboardCards
           total={cardsData.total}
@@ -139,14 +139,47 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Donut */}
       {cardsData && (
-        <div className="glass rounded-2xl p-4">
-          <DonutChart up={cardsData.up} down={cardsData.down} />
+        <div className="glass rounded-2xl p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex rounded-lg overflow-hidden border border-black/10 dark:border-white/10">
+              {(["donut", "gauge", "radial"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setChartVariant(v)}
+                  className={`px-3 py-1.5 text-sm ${
+                    chartVariant === v
+                      ? "bg-brand1 text-white"
+                      : "bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
+                  }`}
+                  aria-pressed={chartVariant === v}
+                >
+                  {v === "donut" ? "Donut" : v === "gauge" ? "Gauge" : "Radial"}
+                </button>
+              ))}
+            </div>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={showLegend}
+                onChange={(e) => setShowLegend(e.target.checked)}
+              />
+              Mostrar legenda
+            </label>
+          </div>
+
+          <DonutChart
+            up={cardsData.up}
+            down={cardsData.down}
+            unknown={cardsData.unknown}
+            variant={chartVariant}
+            showLegend={showLegend}
+            height={280}
+          />
         </div>
       )}
 
-      {/* Filtros + Export */}
       <div className="glass rounded-2xl p-4 space-y-3">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2">
           <div className="w-full md:w-96">
@@ -168,7 +201,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Tabela paginada embutida no DashboardCards */}
         <DashboardCards
           total={cardsData?.total ?? 0}
           up={cardsData?.up ?? 0}
@@ -226,6 +258,7 @@ export default function DashboardPage() {
               </tr>
             );
           }}
+          tableAriaLabel="Tabela de antenas paginada"
         />
       </div>
     </div>

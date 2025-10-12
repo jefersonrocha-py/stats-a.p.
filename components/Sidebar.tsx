@@ -66,31 +66,57 @@ function Hamburger({
   onClick: () => void;
   title?: string;
 }) {
+  const barBase =
+    "absolute block h-[2px] w-5 rounded-full bg-current transition-all duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:duration-0";
+
   return (
     <button
+      type="button"
       onClick={onClick}
-      aria-label="Alternar menu"
+      aria-label={title || "Menu"}
       aria-expanded={open}
       aria-controls="app-sidebar"
+      aria-pressed={open}
       title={title || "Menu"}
-      className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg
-                 bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20
-                 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+      className={`
+        relative inline-flex h-10 w-10 items-center justify-center rounded-xl
+        bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400
+        transition-[background,transform] duration-200 active:scale-[0.98]
+      `}
     >
+      {/* brilho sutil quando aberto */}
       <span
-        className={`absolute block h-[2px] w-5 bg-current transition-transform duration-200
-          ${open ? "translate-y-0 rotate-45" : "-translate-y-1.5"}
-        `}
+        aria-hidden
+        className={`absolute inset-0 rounded-xl transition-shadow duration-300 ${
+          open ? "shadow-[0_0_0_8px_rgba(16,185,129,.10)]" : "shadow-none"
+        }`}
       />
+
+      {/* barra superior */}
       <span
-        className={`absolute block h-[2px] w-5 bg-current transition-opacity duration-200
-          ${open ? "opacity-0" : "opacity-100"}
-        `}
+        className={`${barBase} ${open ? "translate-y-0 rotate-45" : "-translate-y-1.5 rotate-0"}`}
+        style={{ transformOrigin: "center" }}
       />
+
+      {/* barra do meio */}
       <span
-        className={`absolute block h-[2px] w-5 bg-current transition-transform duration-200
-          ${open ? "translate-y-0 -rotate-45" : "translate-y-1.5"}
-        `}
+        className={`${barBase} transition-opacity ${
+          open ? "opacity-0 scale-x-0" : "opacity-100 scale-x-100"
+        }`}
+        style={{ transformOrigin: "center" }}
+      />
+
+      {/* barra inferior */}
+      <span
+        className={`${barBase} ${open ? "translate-y-0 -rotate-45" : "translate-y-1.5 rotate-0"}`}
+        style={{ transformOrigin: "center" }}
+      />
+
+      {/* glow leve ao passar o mouse */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute h-10 w-10 rounded-xl ring-0 hover:ring-1 hover:ring-white/10 transition"
       />
     </button>
   );
@@ -235,6 +261,7 @@ export default function Sidebar() {
       >
         <div className="p-3 flex items-center gap-2 border-b border-white/10 min-h-[56px]">
           <button
+            type="button"
             onClick={() => setSidebarOpen(false)}
             aria-label="Fechar menu"
             className="h-9 w-9 grid place-items-center rounded-lg bg-black/5 hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
