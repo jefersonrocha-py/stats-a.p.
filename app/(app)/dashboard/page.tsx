@@ -1,3 +1,4 @@
+// app/(app)/dashboard/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -58,12 +59,12 @@ export default function DashboardPage() {
     [list, q]
   );
 
-  // 🔢 Normaliza métricas para o DashboardCards (inclui upPct/downPct)
+  // Normaliza métricas para o DashboardCards (inclui upPct/downPct)
   const cardsData = useMemo(() => {
     if (!stats) return null;
 
-    const up = (stats.up ?? stats.online ?? 0) as number;
-    const down = (stats.down ?? stats.offline ?? 0) as number;
+    const up = (stats.up ?? (stats as any).online ?? 0) as number;
+    const down = (stats.down ?? (stats as any).offline ?? 0) as number;
     const inferredTotal = up + down + (stats.unknown ?? 0);
     const total = (stats.total ?? inferredTotal) as number;
 
@@ -127,15 +128,25 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Dashboard</h1>
 
-      {/* ✅ Agora passamos upPct/downPct calculados */}
-      {cardsData && <DashboardCards {...cardsData} />}
+      {/* Cards */}
+      {cardsData && (
+        <DashboardCards
+          total={cardsData.total}
+          up={cardsData.up}
+          down={cardsData.down}
+          upPct={cardsData.upPct}
+          downPct={cardsData.downPct}
+        />
+      )}
 
+      {/* Donut */}
       {cardsData && (
         <div className="glass rounded-2xl p-4">
           <DonutChart up={cardsData.up} down={cardsData.down} />
         </div>
       )}
 
+      {/* Filtros + Export */}
       <div className="glass rounded-2xl p-4 space-y-3">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2">
           <div className="w-full md:w-96">
@@ -157,69 +168,65 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-black/10 dark:border-white/10">
-          <table className="w-full text-sm">
-            <thead className="bg-black/5 dark:bg-white/10">
-              <tr>
-                <th className="text-left p-2">Nome</th>
-                <th className="text-left p-2">Rede</th>
-                <th className="text-left p-2">Latitude</th>
-                <th className="text-left p-2">Longitude</th>
-                <th className="text-left p-2">Última atualização</th>
-                <th className="text-left p-2">Status</th>
-                <th className="text-left p-2">Ações</th>
+        {/* Tabela paginada embutida no DashboardCards */}
+        <DashboardCards
+          total={cardsData?.total ?? 0}
+          up={cardsData?.up ?? 0}
+          down={cardsData?.down ?? 0}
+          upPct={cardsData?.upPct ?? 0}
+          downPct={cardsData?.downPct ?? 0}
+          items={filtered}
+          pageSize={50}
+          renderHeader={() => (
+            <tr>
+              <th className="text-left p-2">Nome</th>
+              <th className="text-left p-2">Rede</th>
+              <th className="text-left p-2">Latitude</th>
+              <th className="text-left p-2">Longitude</th>
+              <th className="text-left p-2">Última atualização</th>
+              <th className="text-left p-2">Status</th>
+              <th className="text-left p-2">Ações</th>
+            </tr>
+          )}
+          renderRow={(a: any) => {
+            const latStr = typeof a.lat === "number" ? a.lat.toFixed(5) : a.lat ?? "-";
+            const lonStr = typeof a.lon === "number" ? a.lon.toFixed(5) : a.lon ?? "-";
+            const updatedStr =
+              typeof a.updatedAt === "string"
+                ? new Date(a.updatedAt).toLocaleString()
+                : a.updatedAt
+                ? new Date(a.updatedAt as any).toLocaleString()
+                : "-";
+            return (
+              <tr key={a.id} className="border-t border-black/10 dark:border-white/10">
+                <td className="p-2">{a.name}</td>
+                <td className="p-2">{a.networkName ?? "-"}</td>
+                <td className="p-2">{latStr}</td>
+                <td className="p-2">{lonStr}</td>
+                <td className="p-2 text-xs opacity-70">{updatedStr}</td>
+                <td className="p-2">
+                  <span className={a.status === "UP" ? "text-green-600" : "text-red-600"}>
+                    {a.status}
+                  </span>
+                </td>
+                <td className="p-2 space-x-2">
+                  <button
+                    onClick={() => toggleStatus(a)}
+                    className="px-2 py-1 rounded bg-brand1 text-white hover:opacity-90"
+                  >
+                    Toggle
+                  </button>
+                  <button
+                    onClick={() => del(a)}
+                    className="px-2 py-1 rounded bg-red-600 text-white hover:opacity-90"
+                  >
+                    Excluir
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.map((a: any) => {
-                const latStr = typeof a.lat === "number" ? a.lat.toFixed(5) : a.lat ?? "-";
-                const lonStr = typeof a.lon === "number" ? a.lon.toFixed(5) : a.lon ?? "-";
-                const updatedStr =
-                  typeof a.updatedAt === "string"
-                    ? new Date(a.updatedAt).toLocaleString()
-                    : a.updatedAt
-                    ? new Date(a.updatedAt as any).toLocaleString()
-                    : "-";
-
-                return (
-                  <tr key={a.id} className="border-t border-black/10 dark:border-white/10">
-                    <td className="p-2">{a.name}</td>
-                    <td className="p-2">{a.networkName ?? "-"}</td>
-                    <td className="p-2">{latStr}</td>
-                    <td className="p-2">{lonStr}</td>
-                    <td className="p-2 text-xs opacity-70">{updatedStr}</td>
-                    <td className="p-2">
-                      <span className={a.status === "UP" ? "text-green-600" : "text-red-600"}>
-                        {a.status}
-                      </span>
-                    </td>
-                    <td className="p-2 space-x-2">
-                      <button
-                        onClick={() => toggleStatus(a)}
-                        className="px-2 py-1 rounded bg-brand1 text-white hover:opacity-90"
-                      >
-                        Toggle
-                      </button>
-                      <button
-                        onClick={() => del(a)}
-                        className="px-2 py-1 rounded bg-red-600 text-white hover:opacity-90"
-                      >
-                        Excluir
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="p-3 text-center opacity-60">
-                    Nenhuma antena encontrada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            );
+          }}
+        />
       </div>
     </div>
   );

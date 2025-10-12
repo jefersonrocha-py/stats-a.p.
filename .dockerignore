@@ -1,7 +1,12 @@
 node_modules
 .next
 .git
-*.log
-.env
-Dockerfile
-docker-compose.yml
+.gitignore
+.vscode
+npm-debug.log*
+pnpm-lock.yaml
+yarn.lock
+.DS_Store
+logs
+coverage
+dist
