@@ -1,12 +1,7 @@
 node_modules
 .next
-.git
-.gitignore
-.vscode
-npm-debug.log*
-pnpm-lock.yaml
-yarn.lock
-.DS_Store
-logs
-coverage
+.out
 dist
+.git
+Dockerfile
+docker-compose.yml
