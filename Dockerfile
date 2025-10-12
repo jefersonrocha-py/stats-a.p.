@@ -1,75 +1,74 @@
-# syntax=docker/dockerfile:1
-
-########################
-#   DEPS (cacheable)   #
-########################
-FROM node:20-alpine AS deps
-WORKDIR /app
-# Prisma em Alpine precisa dessas libs em runtime e build
-RUN apk add --no-cache libc6-compat openssl
-COPY package.json package-lock.json ./
-# Reprodutível e rápido no cache
-RUN npm ci --no-audit --no-fund
-
-########################
-#      BUILDER         #
-########################
+# =========================
+#   STAGE 1: BUILDER
+# =========================
 FROM node:20-alpine AS builder
 WORKDIR /app
-RUN apk add --no-cache libc6-compat openssl
 
-# node_modules com devDeps para build
-COPY --from=deps /app/node_modules ./node_modules
+# Dependências nativas necessárias (Prisma/SSL)
+RUN apk add --no-cache libc6-compat openssl ca-certificates
+
+# --- Evita falhas de DB no build ---
+# Valor temporário para o build (descartável)
+ARG DATABASE_URL=file:/tmp/build.db
+ENV DATABASE_URL=$DATABASE_URL
+
+# Telemetria off no build
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+# Copia manifests primeiro para cache eficiente
 COPY package.json package-lock.json ./
 
-# Prisma (gera client o quanto antes p/ aproveitar cache quando schema não muda)
+# ⬇️ AQUI ESTÁ A CORREÇÃO: tenta `npm ci`; se falhar, usa `npm install`
+RUN if [ -f package-lock.json ]; then \
+      (npm ci --no-audit --no-fund) || (echo "npm ci falhou, usando npm install..." && npm install --no-audit --no-fund); \
+    else \
+      npm install --no-audit --no-fund; \
+    fi
+
+# Prisma antes do código para aproveitar cache do generate
 COPY prisma ./prisma
 RUN npx prisma generate
 
-# Código da app (inclui scripts/)
+# Copia o restante do código (inclui scripts/)
 COPY . .
 
-# Garante que o client está atualizado caso o schema tenha mudado após a etapa anterior
-RUN npx prisma generate
-
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-# Build do Next (gera .next)
+# Build do Next
 RUN npm run build
 
-########################
-#       RUNNER         #
-########################
+# =========================
+#   STAGE 2: RUNNER
+# =========================
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache libc6-compat openssl
 
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV HOST=0.0.0.0
-ENV PORT=3000
+RUN apk add --no-cache libc6-compat openssl ca-certificates
 
-# Se você precisa rodar `npx prisma migrate deploy` no entrypoint,
-# mantenha devDeps (copiando node_modules inteiro do builder).
-# Caso NÃO precise, veja nota "Slim (opcional)" abaixo.
+# Copia deps e artefatos do builder
 COPY --from=builder /app/node_modules ./node_modules
-
-# Artefatos necessários em runtime
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/scripts ./scripts
 
-# Normaliza CRLF e garante permissão de execução
+# Normaliza CRLF e garante permissão no entrypoint
 RUN sed -i 's/\r$//' ./scripts/docker-entrypoint.sh \
  && chmod +x ./scripts/docker-entrypoint.sh
 
-# Persistência do SQLite
-VOLUME ["/app/data"]
+# Variáveis padrão (as reais virão do docker-compose)
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+# ⚠ DATABASE_URL virá do docker-compose (environment)
 
-# Exponha somente o que usa (3000 é o padrão do next start)
-EXPOSE 3000
+# Volume para SQLite
+VOLUME ["/data"]
 
+# Portas (o compose mapeia HOST_PORT:PORT)
+EXPOSE 3000 3001 63000 443
+
+# O entrypoint deve terminar com: exec "$@"
 ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
+# CMD ["npm","run","start"]  # (opcional)
