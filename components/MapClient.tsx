@@ -2,15 +2,15 @@
 
 /**
  * MapClient – Mogi Mirim com limites (maxBounds) + painel à direita
- *
- * - Limita o mapa à área aproximada de Mogi Mirim via maxBounds
- * - Enquadra automaticamente a cidade no load e no botão "Cidade"
- * - Mantém filtros/painel no canto direito sem conflitar com o zoom do Leaflet
+ * - Limita o mapa à área aproximada de Mogi Mirim via maxBounds (LatLngBounds real)
+ * - Enquadra automaticamente a cidade ao iniciar e no botão "Cidade"
+ * - Painel/flutuantes no canto direito sem conflitar com o zoom
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import L, { LatLngBoundsExpression, LatLngExpression } from "leaflet";
+import * as L from "leaflet";
+import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { api } from "@services/api";
@@ -66,24 +66,14 @@ type Antenna = {
 };
 
 // ===== Centro e limites de Mogi Mirim
-// Centro aproximado (prefeitura): lat -22.431, lon -46.955
 const CITY_CENTER: LatLngExpression = [-22.431, -46.955];
-
-// Limites retangulares aproximados da cidade (ajustado para bloquear pan fora da área urbana)
-// sudoeste (lat, lng) -> nordeste (lat, lng)
-const CITY_BOUNDS: LatLngBoundsExpression = [
+const CITY_BOUNDS_ARR: LatLngBoundsExpression = [
   [-22.50, -47.05], // SW
   [-22.36, -46.86], // NE
 ];
+const CITY_BOUNDS = L.latLngBounds(CITY_BOUNDS_ARR); // bounds real
 
 // ===== Comps utilitários
-function Recenter({ center }: { center: LatLngExpression }) {
-  const map = useMap();
-  useEffect(() => {
-    map.setView(center);
-  }, [center, map]);
-  return null;
-}
 function FsResize() {
   const map = useMap();
   useEffect(() => {
@@ -97,6 +87,7 @@ function FsResize() {
   }, [map]);
   return null;
 }
+
 function ClickPicker({
   enabled,
   setLat,
@@ -108,17 +99,29 @@ function ClickPicker({
 }) {
   const map = useMap();
   useEffect(() => {
-    function onClick(e: any) {
+    const onClick = (e: L.LeafletMouseEvent) => {
       if (!enabled) return;
-      const { lat, lng } = e.latlng || {};
+      const { lat, lng } = e.latlng;
       if (typeof lat === "number" && typeof lng === "number") {
         setLat(String(lat.toFixed(5)));
         setLon(String(lng.toFixed(5)));
       }
-    }
+    };
     map.on("click", onClick);
-    return () => map.off("click", onClick);
+    return () => {
+      map.off("click", onClick);
+    };
   }, [map, enabled, setLat, setLon]);
+  return null;
+}
+
+/** Compatível com v3/v4: inicializa com a instância real do mapa */
+function MapInit({ onInit }: { onInit: (map: L.Map) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    onInit(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
   return null;
 }
 
@@ -146,15 +149,16 @@ export default function MapClient() {
 
   // ref do mapa
   const mapRef = useRef<L.Map | null>(null);
-  const onMapCreated = (map: L.Map) => {
-    mapRef.current = map;
-    // aplica bounds e viscosidade (bloqueia pan fora da área)
-    map.setMaxBounds(CITY_BOUNDS);
-    map.options.maxBounds = CITY_BOUNDS;
-    map.options.maxBoundsViscosity = 1.0; // "parede de borracha"
-    // enquadra a cidade no primeiro load
+
+  function applyCityBounds(map: L.Map) {
+    // Enquadra a cidade (com padding)
     map.fitBounds(CITY_BOUNDS, { padding: [24, 24] });
-  };
+  }
+
+  function onMapCreated(map: L.Map) {
+    mapRef.current = map;
+    applyCityBounds(map);
+  }
 
   function fitCity() {
     const map = mapRef.current;
@@ -241,8 +245,8 @@ export default function MapClient() {
     setSaving(true); setErr(null);
     try {
       const body = { name: name.trim(), lat: latNum, lon: lonNum, description: desc.trim() || undefined };
-      const created = await api("/api/antennas", { method: "POST", body: JSON.stringify(body) });
-      setAntennas((prev) => (created?.id ? [created, ...prev] : prev));
+      const created = await api<Antenna>("/api/antennas", { method: "POST", body: JSON.stringify(body) });
+      setAntennas(prev => (created && (created as any).id ? [created, ...prev] : prev));
       setName(""); setLat(""); setLon(""); setDesc(""); setOpenModal(false);
     } catch (er: any) {
       setErr(er?.message || "Erro ao salvar.");
@@ -342,7 +346,7 @@ export default function MapClient() {
               </button>
               {networks.map(n => {
                 const count = antennas.filter(a => (a.networkName ?? "") === n &&
-                  (statusFilter === "ALL" || a.status === statusFilter) &&
+                  (statusFilter === "ALL" || a.status === "UP" ? a.status === "UP" : a.status === "DOWN") && // mantém coerência no count
                   (q.trim() ? (`${a.name ?? ""} ${a.networkName ?? ""}`).toLowerCase().includes(q.trim().toLowerCase()) : true)
                 ).length;
                 return (
@@ -377,28 +381,25 @@ export default function MapClient() {
 
       {/* MAPA */}
       <MapContainer
-        whenCreated={onMapCreated}
         center={CITY_CENTER}
-        // o zoom inicial é ignorado se 'bounds'/'fitBounds' forem usados no onMapCreated,
-        // mas deixamos um valor coerente
         zoom={12}
         className="h-full w-full"
         zoomControl
         scrollWheelZoom
         preferCanvas
-        // segurança extra: prevenir ficar muito longe/fora
         minZoom={10}
         maxZoom={19}
-        // manter coerência visual quando o usuário tenta arrastar para fora
         worldCopyJump={false}
+        maxBounds={CITY_BOUNDS}
+        maxBoundsViscosity={1.0}
       >
-        {/* Satélite (Esri World Imagery) */}
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
           attribution='&copy; <a href="https://www.esri.com/">Esri</a> — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
         />
 
-        <Recenter center={CITY_CENTER} />
+        {/* Inicialização segura da instância do mapa */}
+        <MapInit onInit={onMapCreated} />
         <FsResize />
         <ClickPicker enabled={openModal} setLat={setLat} setLon={setLon} />
 
@@ -437,15 +438,45 @@ export default function MapClient() {
           <div className="w-full max-w-md rounded-2xl bg-white/90 dark:bg-neutral-900 text-black dark:text-white shadow-2xl ring-1 ring-black/10 dark:ring-white/10">
             <div className="px-5 py-4 border-b border-black/10 dark:border-white/10 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Nova Antena</h3>
-              <button onClick={() => setOpenModal(false)} className="px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10" aria-label="Fechar">✕</button>
+              <button
+                onClick={() => setOpenModal(false)}
+                className="px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
             </div>
             <form className="p-5 space-y-3" onSubmit={handleCreate}>
-              <input className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} required />
+              <input
+                className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="Nome"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
               <div className="grid grid-cols-2 gap-3">
-                <input className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Latitude" value={lat} onChange={(e) => setLat(e.target.value)} required />
-                <input className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Longitude" value={lon} onChange={(e) => setLon(e.target.value)} required />
+                <input
+                  className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400"
+                  placeholder="Latitude"
+                  value={lat}
+                  onChange={(e) => setLat(e.target.value)}
+                  required
+                />
+                <input
+                  className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400"
+                  placeholder="Longitude"
+                  value={lon}
+                  onChange={(e) => setLon(e.target.value)}
+                  required
+                />
               </div>
-              <textarea className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400" placeholder="Descrição (opcional)" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} />
+              <textarea
+                className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="Descrição (opcional)"
+                rows={3}
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+              />
               {err && <div className="text-xs text-red-600 bg-red-600/10 border border-red-600/30 rounded p-2">{err}</div>}
               <div className="pt-1 flex items-center justify-between">
                 <p className="text-xs opacity-80">Dica: clique no mapa com o modal aberto para preencher Lat/Lon.</p>

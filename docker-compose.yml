@@ -2,46 +2,76 @@ version: "3.9"
 
 services:
   web:
-    build: .
-    image: etherium/antennas:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: antennas-app:latest
     container_name: antennas-web
     restart: unless-stopped
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
+
+    # usa APENAS variáveis do .env (interpolação do Compose)
     environment:
-      DATABASE_URL: "file:/app/prisma/data/db.sqlite" # persiste no volume
-      NODE_ENV: "production"
-      PORT: "3000"
-      NEXT_TELEMETRY_DISABLED: "1"
-      # GDMS_BASE: "https://www.gwn.cloud"   # (opcional) sobrescreva se precisar
+      NODE_ENV: ${NODE_ENV}
+      NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED}
+      HOST: ${HOST}
+      PORT: ${PORT}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_DAYS: ${JWT_EXPIRES_DAYS}
+      COOKIE_SECURE: ${COOKIE_SECURE}
+      FORCE_HTTP: ${FORCE_HTTP}
+      GDMS_BASE: ${GDMS_BASE}
+      GDMS_OAUTH_URL: ${GDMS_OAUTH_URL}
+      GDMS_CLIENT_ID: ${GDMS_CLIENT_ID}
+      GDMS_CLIENT_SECRET: ${GDMS_CLIENT_SECRET}
+      GDMS_SYNC_INTERVAL_MS: ${GDMS_SYNC_INTERVAL_MS}
+      GDMS_PAGE_SIZE: ${GDMS_PAGE_SIZE}
+      GDMS_SHOW: ${GDMS_SHOW}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
+      SUPERADMIN_NAME: ${SUPERADMIN_NAME}
+
+    ports:
+      - "${HOST_PORT}:${PORT}"
+
     volumes:
-      - sqlite-data:/app/prisma/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
+      - appdata:/data
+
+    networks:
+      - web
 
   worker:
-    image: etherium/antennas:latest
-    container_name: antennas-worker
+    image: antennas-app:latest
+    container_name: antennas-gdms-cron
     restart: unless-stopped
+
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED}
+      DATABASE_URL: ${DATABASE_URL}
+      GDMS_BASE: ${GDMS_BASE}
+      GDMS_OAUTH_URL: ${GDMS_OAUTH_URL}
+      GDMS_CLIENT_ID: ${GDMS_CLIENT_ID}
+      GDMS_CLIENT_SECRET: ${GDMS_CLIENT_SECRET}
+      GDMS_SYNC_INTERVAL_MS: ${GDMS_SYNC_INTERVAL_MS}
+      GDMS_PAGE_SIZE: ${GDMS_PAGE_SIZE}
+      GDMS_SHOW: ${GDMS_SHOW}
+
     depends_on:
       web:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      APP_BASE_URL: "http://web:3000"           # chama o endpoint do web
-      SYNC_INTERVAL_MS: "300000"                # 5 minutos
-      SYNC_PATH: "/api/integrations/gdms/sync"  # endpoint de sync
-      DATABASE_URL: "file:/app/prisma/data/db.sqlite"
-      NODE_ENV: "production"
-    command: ["node", "scripts/gdms-cron.mjs"]
+        condition: service_started
+
     volumes:
-      - sqlite-data:/app/prisma/data
+      - appdata:/data
+
+    networks:
+      - web
+
+    command: ["node", "./scripts/gdms-cron.mjs"]
 
 volumes:
-  sqlite-data:
+  appdata:
+
+networks:
+  web:
+    external: true

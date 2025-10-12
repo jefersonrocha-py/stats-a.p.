@@ -52,6 +52,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Banco SQLite persistente
 VOLUME ["/data"]
 
-EXPOSE 3000
+EXPOSE 3001 3000 63000 443
 
 ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
