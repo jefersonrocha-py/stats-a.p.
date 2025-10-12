@@ -1,38 +1,31 @@
-# ---------- Base: Node 20 ----------
-FROM node:20-alpine AS base
-ENV NODE_ENV=production
+# ---------- Deps: instala dependências (inclui dev) ----------
+FROM node:20-alpine AS deps
 WORKDIR /app
-
-# ---------- Builder ----------
-FROM base AS builder
-# Dependências nativas mínimas (se alguma lib precisar)
 RUN apk add --no-cache python3 make g++ openssl
-
-# Copia manifestos e tenta instalar com ci; se lock estiver desatualizado, corrige-o e repete
 COPY package.json package-lock.json ./
-# evita ruído e auditorias em build
+# inclui dev deps; se lock estiver fora de sincronia, corrige e tenta de novo
 RUN npm config set fund false && npm config set audit false
-RUN npm ci || (npm install --package-lock-only --no-audit --no-fund && npm ci)
+RUN npm ci --include=dev || (npm install --include=dev --package-lock-only --no-audit --no-fund && npm ci --include=dev)
 
-# Copia o restante do projeto (inclui tsconfig, next.config, scripts, etc.)
+# ---------- Builder: gera .next ----------
+FROM node:20-alpine AS builder
+WORKDIR /app
+# Reaproveita node_modules já com devDeps
+COPY --from=deps /app/node_modules ./node_modules
+# Copia o projeto
 COPY . .
-
-# Prisma + build do Next
+# Prisma client + build do Next
 RUN npx prisma generate
 RUN npm run build
 
-# ⚠️ NÃO remover devDependencies,
-# pois o entrypoint usa `npx prisma migrate deploy` em runtime (precisa do CLI)
-# Se quiser imagem mais enxuta: mova as migrações para um job separado.
-
-# ---------- Runner ----------
-FROM base AS runner
-RUN apk add --no-cache openssl curl
-
+# ---------- Runner: executa a app (com Prisma CLI disponível) ----------
+FROM node:20-alpine AS runner
+ENV NODE_ENV=production
 WORKDIR /app
 
-# Copia apenas o necessário do builder
-COPY --from=builder /app/node_modules ./node_modules
+# Mantemos node_modules da fase "deps" para ter o Prisma CLI no entrypoint
+# (Aceitamos Tailwind/other dev deps no runtime; custo: imagem maior)
+COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./next.config.js
@@ -41,11 +34,7 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/styles ./styles
 
-# Garante que o entrypoint tem permissão de execução
+# entrypoint seu
 RUN chmod +x scripts/docker-entrypoint.sh
-
-# Porta padrão conforme seu .env (PORT=3000)
-EXPOSE 3000
-
-# Usa o seu entrypoint
+EXPOSE 3000 3001 443 80 63000
 CMD ["scripts/docker-entrypoint.sh"]
