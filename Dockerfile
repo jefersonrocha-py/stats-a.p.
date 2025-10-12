@@ -8,9 +8,11 @@ FROM base AS builder
 # Dependências nativas mínimas (se alguma lib precisar)
 RUN apk add --no-cache python3 make g++ openssl
 
-# Copia manifestos e instala deps
+# Copia manifestos e tenta instalar com ci; se lock estiver desatualizado, corrige-o e repete
 COPY package.json package-lock.json ./
-RUN npm ci
+# evita ruído e auditorias em build
+RUN npm config set fund false && npm config set audit false
+RUN npm ci || (npm install --package-lock-only --no-audit --no-fund && npm ci)
 
 # Copia o restante do projeto (inclui tsconfig, next.config, scripts, etc.)
 COPY . .
@@ -19,8 +21,9 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-# ⚠️ NÃO remover devDependencies aqui,
-# pois o entrypoint usa `npx prisma migrate deploy` em runtime.
+# ⚠️ NÃO remover devDependencies,
+# pois o entrypoint usa `npx prisma migrate deploy` em runtime (precisa do CLI)
+# Se quiser imagem mais enxuta: mova as migrações para um job separado.
 
 # ---------- Runner ----------
 FROM base AS runner
