@@ -2,11 +2,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, Antenna, Stats } from "@services/api";
-import DashboardCards from "@components/DashboardCards";
-import DonutChart from "@components/DonutChart";
-import { toCSV } from "@lib/csv";
-import { connectSSE } from "@services/sseClient";
+// ✅ trocado de @services/* para caminhos relativos
+import { api, Antenna, Stats } from "../../../services/api";
+import DashboardCards from "../../../components/DashboardCards";
+import DonutChart from "../../../components/DonutChart";
+import { toCSV } from "../../../lib/csv";
+import { connectSSE } from "../../../services/sseClient";
 
 export default function DashboardPage() {
   const [list, setList] = useState<Antenna[]>([]);
@@ -185,7 +186,7 @@ export default function DashboardPage() {
           <div className="w-full md:w-96">
             <input
               placeholder="Filtrar por AP ou Rede..."
-              className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5"
+              className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg白/5"
               value={q}
               onChange={(e) => setQ(e.target.value.toLowerCase())}
               aria-label="Filtro por AP ou Rede"
@@ -230,7 +231,7 @@ export default function DashboardPage() {
                 ? new Date(a.updatedAt as any).toLocaleString()
                 : "-";
             return (
-              <tr key={a.id} className="border-t border-black/10 dark:border-white/10">
+              <tr key={a.id} className="border-t border-black/10 dark:border白/10">
                 <td className="p-2">{a.name}</td>
                 <td className="p-2">{a.networkName ?? "-"}</td>
                 <td className="p-2">{latStr}</td>
