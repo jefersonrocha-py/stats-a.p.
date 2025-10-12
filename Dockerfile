@@ -1,67 +1,66 @@
-# =========================
-#   STAGE 1: BUILDER
-# =========================
-FROM node:20-alpine AS builder
+# ---------- Base: Node 20 ----------
+FROM node:20-alpine AS base
+ENV NODE_ENV=production
 WORKDIR /app
 
-# Dependências nativas (Prisma/SSL)
-RUN apk add --no-cache libc6-compat openssl ca-certificates
+# ---------- Builder ----------
+FROM base AS builder
+# Instala dependências nativas mínimas (se alguma lib precisar)
+RUN apk add --no-cache python3 make g++ openssl
 
-# DB temporário p/ build (evita falhas no prerender)
-ARG DATABASE_URL=file:/tmp/build.db
-ENV DATABASE_URL=$DATABASE_URL
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_ENV=production
-
-# 1) Instalar deps (sem depender de lock sincronizado)
+# Copia manifestos e instala deps em modo "clean"
 COPY package.json package-lock.json ./
-RUN npm install --omit=optional --no-audit --no-fund
+RUN npm ci
 
-# 2) Prisma Client + aplicar schema no DB do build
-COPY prisma ./prisma
-RUN npx prisma generate
-RUN npx prisma db push --skip-generate
-
-# 3) Código da aplicação (inclui scripts/)
+# Copia o restante do projeto e gera o build
 COPY . .
-
-# 4) Build do Next.js
+# Gera o client do Prisma e o build do Next
+RUN npx prisma generate
 RUN npm run build
 
-# =========================
-#   STAGE 2: RUNNER
-# =========================
-FROM node:20-alpine AS runner
+# Remove dependências de dev para otimizar a imagem final
+RUN npm prune --omit=dev
+
+# ---------- Runner ----------
+FROM base AS runner
+# Runtime mínimo
+RUN apk add --no-cache openssl curl
+
 WORKDIR /app
 
-RUN apk add --no-cache libc6-compat openssl ca-certificates
-
-# Copiar artefatos
+# Copia apenas o necessário do builder
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.js ./next.config.js
+COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/scripts ./scripts
+# (Se você usa mapas/estilos locais)
+COPY --from=builder /app/styles ./styles
 
-# Normaliza CRLF e garante permissão
-RUN sed -i 's/\r$//' ./scripts/docker-entrypoint.sh \
- && chmod +x ./scripts/docker-entrypoint.sh
-
-# Remover devDeps em runtime (opcional)
-RUN npm prune --omit=dev --no-audit --no-fund || true
-
-# Vars default (as reais virão do compose/.env)
+# Porta do Next
 ENV HOST=0.0.0.0
-ENV PORT=3000
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-# DATABASE_URL virá do docker-compose (ex.: file:/data/app.db)
+ENV PORT=63000
+EXPOSE 63000
 
-# Persistência do SQLite
-VOLUME ["/data"]
+# Banco SQLite persistido no volume (ver docker-compose)
+# DATABASE_URL deve apontar pra "file:/data/app.sqlite"
+# Exemplo: DATABASE_URL=file:/data/app.sqlite
 
-EXPOSE 3000 3001 63000 443
+# Script de entrada: aplica migrações e (opcional) seed
+# SEED_ON_BOOT=true executa scripts/seed-local.mjs se existir
+RUN printf '%s\n' \
+'#!/bin/sh' \
+'set -e' \
+'echo "[entrypoint] Applying Prisma migrations..."' \
+'npx prisma migrate deploy' \
+'if [ "$SEED_ON_BOOT" = "true" ] && [ -f ./scripts/seed-local.mjs ]; then' \
+'  echo "[entrypoint] Running seed..."' \
+'  node ./scripts/seed-local.mjs || echo "[entrypoint] Seed skipped/failure (continuing)"' \
+'fi' \
+'echo "[entrypoint] Starting Next.js on $HOST:$PORT..."' \
+'npm run start -- -p $PORT -H $HOST' \
+> /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
-# CMD ["npm","run","start"]  # opcional
+CMD ["/app/entrypoint.sh"]
