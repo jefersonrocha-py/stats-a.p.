@@ -2,6 +2,22 @@
 
 etherium-antennas/
 ├─ app/
+│  ├─(app)/
+│  │  ├─ admin/
+│  │  │  ├─ page.tsx
+│  │  ├─ dashboard/
+│  │  │  ├─ loading.tsx
+│  │  │  ├─ page.tsx
+│  │  ├─ settings/
+│  │  │  ├─ page.tsx
+│  │  │  ├─ page.tsx
+│  │  └─ layout.tsx
+│  │  └─ page.tsx
+│  │  ├─ admin/
+│  ├─(auth)/
+│  ├─ login/
+│  │  ├─ page.tsx
+
 │  ├─ api/
 │  │  ├─ antennas/
 │  │  │  ├─ route.ts
