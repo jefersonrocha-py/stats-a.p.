@@ -58,6 +58,31 @@ export default function DashboardPage() {
     [list, q]
   );
 
+  // 🔢 Normaliza métricas para o DashboardCards (inclui upPct/downPct)
+  const cardsData = useMemo(() => {
+    if (!stats) return null;
+
+    const up = (stats.up ?? stats.online ?? 0) as number;
+    const down = (stats.down ?? stats.offline ?? 0) as number;
+    const inferredTotal = up + down + (stats.unknown ?? 0);
+    const total = (stats.total ?? inferredTotal) as number;
+
+    const denom = total || inferredTotal || 1;
+    const upPct = Number(((up / denom) * 100).toFixed(2));
+    const downPct = Number(((down / denom) * 100).toFixed(2));
+    const unknown = stats.unknown ?? Math.max(0, total - up - down);
+
+    return {
+      total,
+      up,
+      down,
+      unknown,
+      upPct,
+      downPct,
+      byModel: stats.byModel,
+    };
+  }, [stats]);
+
   async function toggleStatus(a: Antenna) {
     const next = a.status === "UP" ? "DOWN" : "UP";
     await api(`/api/antennas/${a.id}`, {
@@ -102,11 +127,12 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Dashboard</h1>
 
-      {stats && <DashboardCards {...stats} />}
+      {/* ✅ Agora passamos upPct/downPct calculados */}
+      {cardsData && <DashboardCards {...cardsData} />}
 
-      {stats && (
+      {cardsData && (
         <div className="glass rounded-2xl p-4">
-          <DonutChart up={stats.up} down={stats.down} />
+          <DonutChart up={cardsData.up} down={cardsData.down} />
         </div>
       )}
 
@@ -146,10 +172,8 @@ export default function DashboardPage() {
             </thead>
             <tbody>
               {filtered.map((a: any) => {
-                const latStr =
-                  typeof a.lat === "number" ? a.lat.toFixed(5) : a.lat ?? "-";
-                const lonStr =
-                  typeof a.lon === "number" ? a.lon.toFixed(5) : a.lon ?? "-";
+                const latStr = typeof a.lat === "number" ? a.lat.toFixed(5) : a.lat ?? "-";
+                const lonStr = typeof a.lon === "number" ? a.lon.toFixed(5) : a.lon ?? "-";
                 const updatedStr =
                   typeof a.updatedAt === "string"
                     ? new Date(a.updatedAt).toLocaleString()
@@ -158,21 +182,14 @@ export default function DashboardPage() {
                     : "-";
 
                 return (
-                  <tr
-                    key={a.id}
-                    className="border-t border-black/10 dark:border-white/10"
-                  >
+                  <tr key={a.id} className="border-t border-black/10 dark:border-white/10">
                     <td className="p-2">{a.name}</td>
                     <td className="p-2">{a.networkName ?? "-"}</td>
                     <td className="p-2">{latStr}</td>
                     <td className="p-2">{lonStr}</td>
                     <td className="p-2 text-xs opacity-70">{updatedStr}</td>
                     <td className="p-2">
-                      <span
-                        className={
-                          a.status === "UP" ? "text-green-600" : "text-red-600"
-                        }
-                      >
+                      <span className={a.status === "UP" ? "text-green-600" : "text-red-600"}>
                         {a.status}
                       </span>
                     </td>
