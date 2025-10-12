@@ -9,7 +9,9 @@ services:
     container_name: antennas-web
     restart: unless-stopped
 
-    # usa APENAS variáveis do .env (interpolação do Compose)
+    # Carrega variáveis do .env (sem defaults)
+    env_file:
+      - .env
     environment:
       NODE_ENV: ${NODE_ENV}
       NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED}
@@ -34,8 +36,9 @@ services:
     ports:
       - "${HOST_PORT}:${PORT}"
 
+    # IMPORTANTe: persistência do SQLite em /app/data
     volumes:
-      - appdata:/data
+      - appdata:/app/data
 
     networks:
       - web
@@ -45,6 +48,8 @@ services:
     container_name: antennas-gdms-cron
     restart: unless-stopped
 
+    env_file:
+      - .env
     environment:
       NODE_ENV: ${NODE_ENV}
       NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED}
@@ -62,7 +67,7 @@ services:
         condition: service_started
 
     volumes:
-      - appdata:/data
+      - appdata:/app/data
 
     networks:
       - web

@@ -5,25 +5,25 @@ WORKDIR /app
 
 # ---------- Builder ----------
 FROM base AS builder
-# Instala dependências nativas mínimas (se alguma lib precisar)
+# Dependências nativas mínimas (se alguma lib precisar)
 RUN apk add --no-cache python3 make g++ openssl
 
-# Copia manifestos e instala deps em modo "clean"
+# Copia manifestos e instala deps
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copia o restante do projeto e gera o build
+# Copia o restante do projeto (inclui tsconfig, next.config, scripts, etc.)
 COPY . .
-# Gera o client do Prisma e o build do Next
+
+# Prisma + build do Next
 RUN npx prisma generate
 RUN npm run build
 
-# Remove dependências de dev para otimizar a imagem final
-RUN npm prune --omit=dev
+# ⚠️ NÃO remover devDependencies aqui,
+# pois o entrypoint usa `npx prisma migrate deploy` em runtime.
 
 # ---------- Runner ----------
 FROM base AS runner
-# Runtime mínimo
 RUN apk add --no-cache openssl curl
 
 WORKDIR /app
@@ -36,31 +36,13 @@ COPY --from=builder /app/next.config.js ./next.config.js
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/scripts ./scripts
-# (Se você usa mapas/estilos locais)
 COPY --from=builder /app/styles ./styles
 
-# Porta do Next
-ENV HOST=0.0.0.0
-ENV PORT=63000
-EXPOSE 63000
+# Garante que o entrypoint tem permissão de execução
+RUN chmod +x scripts/docker-entrypoint.sh
 
-# Banco SQLite persistido no volume (ver docker-compose)
-# DATABASE_URL deve apontar pra "file:/data/app.sqlite"
-# Exemplo: DATABASE_URL=file:/data/app.sqlite
+# Porta padrão conforme seu .env (PORT=3000)
+EXPOSE 3000
 
-# Script de entrada: aplica migrações e (opcional) seed
-# SEED_ON_BOOT=true executa scripts/seed-local.mjs se existir
-RUN printf '%s\n' \
-'#!/bin/sh' \
-'set -e' \
-'echo "[entrypoint] Applying Prisma migrations..."' \
-'npx prisma migrate deploy' \
-'if [ "$SEED_ON_BOOT" = "true" ] && [ -f ./scripts/seed-local.mjs ]; then' \
-'  echo "[entrypoint] Running seed..."' \
-'  node ./scripts/seed-local.mjs || echo "[entrypoint] Seed skipped/failure (continuing)"' \
-'fi' \
-'echo "[entrypoint] Starting Next.js on $HOST:$PORT..."' \
-'npm run start -- -p $PORT -H $HOST' \
-> /app/entrypoint.sh && chmod +x /app/entrypoint.sh
-
-CMD ["/app/entrypoint.sh"]
+# Usa o seu entrypoint
+CMD ["scripts/docker-entrypoint.sh"]
