@@ -16,6 +16,8 @@ import {
 } from "recharts";
 
 type Variant = "donut" | "gauge" | "radial";
+type Slice = "UP" | "DOWN" | "UNKNOWN";
+type PieDatum = { name: Slice; value: number; color: string };
 
 type Props = {
   up: number;
@@ -27,11 +29,11 @@ type Props = {
   height?: number;
 };
 
-const COLORS = {
+const COLORS: Record<Slice, string> = {
   UP: "#22c55e",
   DOWN: "#ef4444",
   UNKNOWN: "#9ca3af",
-} as const;
+};
 
 const fmtInt = (n: number) =>
   new Intl.NumberFormat("pt-BR").format(Math.max(0, Math.round(Number(n) || 0)));
@@ -68,7 +70,7 @@ export default function DonutChart({
     const t = sUp + sDown + sUnknown;
     const pct = (v: number) => (t > 0 ? (v / t) * 100 : 0);
 
-    const d = [
+    const d: PieDatum[] = [
       { name: "UP", value: sUp, color: COLORS.UP },
       { name: "DOWN", value: sDown, color: COLORS.DOWN },
     ];
@@ -83,7 +85,6 @@ export default function DonutChart({
     };
   }, [up, down, unknown]);
 
-  // --- pulso do label central quando upPct muda ---
   const [pulse, setPulse] = useState(false);
   useEffect(() => {
     setPulse(true);
@@ -91,9 +92,8 @@ export default function DonutChart({
     return () => clearTimeout(t);
   }, [upPct]);
 
-  // --- hover states (glow) ---
-  const [activeIndex, setActiveIndex] = useState<number | null>(null); // donut
-  const [hoverBand, setHoverBand] = useState<"UP" | "DOWN" | "UNKNOWN" | null>(null); // radial/gauge
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [hoverBand, setHoverBand] = useState<Slice | null>(null);
 
   const legendPayload =
     showLegend &&
@@ -112,7 +112,7 @@ export default function DonutChart({
   const TooltipBox = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
     if (!active || !payload || payload.length === 0) return null;
     const p = payload[0];
-    const name: "UP" | "DOWN" | "UNKNOWN" = p?.name;
+    const name: Slice = p?.name;
     const value: number = p?.value ?? p?.pct ?? 0;
     const pct =
       name === "UP" ? upPct : name === "DOWN" ? downPct : name === "UNKNOWN" ? unkPct : 0;
@@ -152,7 +152,7 @@ export default function DonutChart({
     );
   }
 
-  // -------- DONUT MODERNO --------
+  // -------- DONUT --------
   function RenderDonut() {
     const innerR = Math.min(70, Math.floor(height * 0.25));
     const outerR = Math.min(110, Math.floor(height * 0.4));
@@ -381,7 +381,7 @@ export default function DonutChart({
     );
   }
 
-  // -------- RADIAL MODERNO --------
+  // -------- RADIAL --------
   function RenderRadial() {
     const upBand = Math.min(90, Math.floor(height * 0.36));
     const downBand = Math.max(0, upBand - 20);
@@ -430,8 +430,6 @@ export default function DonutChart({
               dataKey="pct"
               background
               cornerRadius={16}
-              clockWise
-              barSize={14}
               data={radialData.filter((d) => d.name === "UP")}
               fill={radialData.find((d) => d.name === "UP")?.fill}
               innerRadius={downBand}
@@ -444,8 +442,6 @@ export default function DonutChart({
               dataKey="pct"
               background
               cornerRadius={16}
-              clockWise
-              barSize={14}
               data={radialData.filter((d) => d.name === "DOWN")}
               fill={radialData.find((d) => d.name === "DOWN")?.fill}
               innerRadius={unkBand}
@@ -459,8 +455,6 @@ export default function DonutChart({
                 dataKey="pct"
                 background
                 cornerRadius={16}
-                clockWise
-                barSize={14}
                 data={radialData.filter((d) => d.name === "UNKNOWN")}
                 fill={radialData.find((d) => d.name === "UNKNOWN")?.fill}
                 innerRadius={unkBand - 18}
@@ -494,7 +488,6 @@ export default function DonutChart({
       {variant === "gauge" && <RenderGauge />}
       {variant === "radial" && <RenderRadial />}
 
-      {/* keyframes locais para o pulso */}
       <style jsx>{`
         .dc-pulse {
           animation: dcPulse 0.8s ease-out;

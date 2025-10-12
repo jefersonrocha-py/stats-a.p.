@@ -1,7 +1,10 @@
 // prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Alvo para imagens Debian/Ubuntu com OpenSSL 3 (node:XX-bookworm[-slim])
+  // Se você usar Alpine, troque por: ["native", "linux-musl-openssl-3.0.x"]
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -58,11 +61,11 @@ model User {
   email        String   @unique
   passwordHash String
   role         String   @default("USER") // "SUPERADMIN" | "ADMIN" | "USER"
+  isBlocked    Boolean  @default(false)  // ✅ faltava essa coluna
   createdAt    DateTime @default(now())
 
   @@index([role])
 }
-
 
 model GdmsToken {
   id          Int      @id @default(1)  // sempre 1
