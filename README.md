@@ -1,37 +1,60 @@
-Etherium Antennas — Map + Dashboard (Next.js)
+# Etherium Antennas — Map + Dashboard (Next.js)
 
-Aplicação full-stack para cadastrar e mapear antenas Wi-Fi com mapa satélite (centrado em Mogi Mirim/SP), dashboard dinâmico, tema light/dark, tempo real (SSE), Docker e SQLite/Prisma.
-Integra com o GDMS (GWN Cloud) para importar APs, redes e status online/offline a cada 5 minutos (worker) e renova o token OAuth automaticamente a cada 1 hora.
+Aplicação **full‑stack** para cadastrar e mapear antenas Wi‑Fi com mapa satélite (centrado em **Mogi Mirim/SP**), dashboard dinâmico, **tema light/dark**, **tempo real (SSE)**, **Docker** e **SQLite/Prisma**.
 
-✨ Recursos
+Integra com o **GDMS (GWN Cloud)** para importar APs, redes e status online/offline a cada **5 minutos** (worker) e **renova o token OAuth automaticamente** a cada **1 hora**.
 
-Mapa (Leaflet + Esri World Imagery) com limites da cidade, painel lateral de filtros e pins UP/DOWN.
+---
 
-Dashboard com cards + donut, filtro por rede e export CSV/PDF.
+## Sumário
 
-Settings para inserir Latitude/Longitude/Observações (posiciona os APs no mapa).
+* [Recursos](#-recursos)
+* [Arquitetura (alto nível)](#-arquitetura-alto-nível)
+* [Estrutura de Pastas](#️-estrutura-de-pastas-resumo)
+* [Modelos (Prisma)](#-modelos-prisma--resumo)
+* [Variáveis de Ambiente](#-variáveis-de-ambiente)
+* [Setup Local (dev)](#️-setup-local-dev)
+* [Rodando com Docker](#-rodando-com-docker)
+* [Autenticação](#-autenticação)
+* [Integração GDMS](#-integração-gdms-gwn-cloud)
+* [Mapa](#️-mapa-mapclient)
+* [Dashboard](#-dashboard)
+* [Settings](#-settings)
+* [API (resumo)](#-api-resumo)
+* [Testes rápidos (curl)](#-testes-rápidos-curl)
+* [Build de Produção (sem Docker)](#-build-de-produção-sem-docker)
+* [Troubleshooting](#-troubleshooting)
+* [Checagens úteis (Docker)](#-checagens-úteis-docker)
+* [Licença](#-licença)
+* [Créditos](#-créditos)
 
-Integração GDMS: paginação de networks → APs, normalização de latitude/longitude, status e histórico.
+---
 
-Auth com JWT (cookie HttpOnly) + /admin para criar, bloquear e excluir usuários (apenas SUPERADMIN).
+## ✨ Recursos
 
-SSE para atualizar UI ao vivo (criação/edição/status).
+* **Mapa** (Leaflet + Esri World Imagery) com limites da cidade, painel lateral de filtros e pins **UP/DOWN**.
+* **Dashboard** com cards + donut, filtro por rede e **export CSV/PDF**.
+* **Settings** para inserir Latitude/Longitude/Observações (posiciona os APs no mapa).
+* **Integração GDMS**: paginação de networks → APs, normalização de latitude/longitude, status e histórico.
+* **Auth** com **JWT** (cookie **HttpOnly**) + `/admin` para criar, bloquear e excluir usuários (**apenas SUPERADMIN**).
+* **SSE** para atualizar UI ao vivo (criação/edição/status).
+* **Docker** (web + worker) com **SQLite em volume**.
 
-Docker (web + worker) com SQLite em volume.
+---
 
-🧱 Arquitetura (alto nível)
+## 🧱 Arquitetura (alto nível)
 
-Next.js 14 (App Router, TS) – UI e rotas API.
+* **Next.js 14** (App Router, TypeScript) – UI e rotas API.
+* **Prisma + SQLite** – persistência (**Antenna**, **StatusHistory**, **User**, **GdmsToken**).
+* **GDMS Service** – client HTTP assinado, paginação, pooling/cron.
+* **Worker** (`scripts/gdms-cron.mjs`) – sincronismo **5 min** (status) + **60 min** (token).
+* **SSE** – stream de eventos para UI (dashboard/mapa).
 
-Prisma + SQLite – persistência (Antennas, StatusHistory, Users, GdmsToken).
+---
 
-GDMS Service – client HTTP assinado, paginação, pooling/cron.
+## 🗂️ Estrutura de Pastas (resumo)
 
-Worker (scripts/gdms-cron.mjs) – sincronismo 5 min (status) + 60 min (token).
-
-SSE – stream de eventos para UI (dashboard/mapa).
-
-🗂️ Estrutura de Pastas (resumo)
+```text
 etherium-antennas/
 ├─ app/
 │  ├─ (app)/
@@ -76,22 +99,28 @@ etherium-antennas/
 ├─ next.config.js
 ├─ postcss.config.js
 └─ package.json
+```
 
-🧬 Modelos (Prisma – resumo)
+---
 
-Antenna: id, name, lat, lon, description, status ("UP"|"DOWN"),
-gdmsApId?, networkId?, networkName?, lastSyncAt?, lastStatusChange?, timestamps.
+## 🧬 Modelos (Prisma – resumo)
 
-StatusHistory: mudanças de status por antennaId.
+**Antenna**: `id`, `name`, `lat`, `lon`, `description`, `status` ("UP"|"DOWN"),
+`gdmsApId?`, `networkId?`, `networkName?`, `lastSyncAt?`, `lastStatusChange?`, timestamps.
 
-User: role ("SUPERADMIN"|"ADMIN"|"USER"), isBlocked (boolean), email, passwordHash, timestamps.
+**StatusHistory**: mudanças de status por `antennaId`.
 
-GdmsToken: singleton com accessToken, expiresAt.
+**User**: `role` ("SUPERADMIN"|"ADMIN"|"USER"), `isBlocked` (boolean), `email`, `passwordHash`, timestamps.
 
-🔧 Variáveis de Ambiente
+**GdmsToken**: singleton com `accessToken`, `expiresAt`.
 
-Crie seu .env a partir do .env.example. Campos principais:
+---
 
+## 🔧 Variáveis de Ambiente
+
+Crie seu `.env` a partir do `.env.example`. Campos principais:
+
+```ini
 # App
 NODE_ENV=development
 HOST=0.0.0.0
@@ -118,11 +147,15 @@ SEED_ON_BOOT=false
 SUPERADMIN_EMAIL=admin@local.test
 SUPERADMIN_PASSWORD=Admin123!
 SUPERADMIN_NAME=Root
+```
 
+> **Produção (Docker):** o `docker-compose.yml` sobrescreve `DATABASE_URL` para `file:/data/app.sqlite` (volume).
 
-Produção em Docker: o docker-compose.yml sobrescreve DATABASE_URL para file:/data/app.sqlite (volume).
+---
 
-▶️ Setup Local (dev)
+## ▶️ Setup Local (dev)
+
+```bash
 # 1) Dependências
 npm i
 
@@ -136,22 +169,25 @@ SUPERADMIN_EMAIL="admin@local.test" SUPERADMIN_PASSWORD="Admin123!" node scripts
 
 # 4) Subir app
 npm run dev
+```
 
-
-Abra: http://localhost:3000
+Abra: [http://localhost:3000](http://localhost:3000)
 
 Login com o SUPERADMIN criado no seed.
 
-🐳 Rodando com Docker
-Compose (incluído no repo)
+---
 
-web: Next.js em produção.
+## 🐳 Rodando com Docker
 
-worker: job de sync GDMS (5 min) + renovação de token (1 h).
+**Compose** (incluído no repo)
 
-Volume appdata para o SQLite /data/app.sqlite.
+* **web**: Next.js em produção.
+* **worker**: job de sync GDMS (5 min) + renovação de token (1 h).
+* **Volume** `appdata` para o SQLite `:/data/app.sqlite`.
 
-Passos
+**Passos**
+
+```bash
 # build
 docker compose build
 
@@ -160,150 +196,146 @@ docker compose up -d
 
 # logs
 docker compose logs -f
+```
 
+**Migrations (primeira subida)**
 
-Migrations (primeira subida)
-
+```bash
 docker compose exec web npx prisma migrate deploy
+```
 
+**Seed (opcional – se SEED_ON_BOOT=false)**
 
-Seed (opcional – se SEED_ON_BOOT=false)
-
+```bash
 docker compose exec web node ./scripts/seed-local.mjs
+```
 
+**Healthcheck**
 
-Healthcheck
-
+```text
 GET /api/health
+```
 
-O compose já faz o health dos serviços; aguarde healthy antes do worker iniciar.
+O compose já faz o health dos serviços; aguarde **healthy** antes do worker iniciar.
 
-Reverse Proxy / HTTPS (Nginx Proxy Manager)
+**Reverse Proxy / HTTPS (Nginx Proxy Manager)**
 
-Publique web:63000 atrás de um host HTTPS.
+* Publique `web:63000` atrás de um host **HTTPS**.
+* Use `COOKIE_SECURE=true` no `.env`.
+* Se seu proxy não propagar `secure`, pode temporariamente definir `FORCE_HTTP=true` para **depurar login (cookies)**.
 
-Use COOKIE_SECURE=true no .env.
+---
 
-Se seu proxy não propagar secure, pode temporariamente definir FORCE_HTTP=true para depurar login (cookies).
+## 🔐 Autenticação
 
-🔐 Autenticação
+* **Login**: `POST /api/auth/login` (cookie **HttpOnly**)
+* **Logout**: `POST /api/auth/logout`
+* **Perfil**: `GET /api/me`
+* `/admin`: somente **SUPERADMIN** (criar, bloquear/desbloquear, excluir usuários via UI)
 
-Login: POST /api/auth/login (cookie auth HttpOnly).
+**Curl de exemplo (teste de login)**
 
-Logout: POST /api/auth/logout.
-
-Perfil: GET /api/me.
-
-/admin: somente SUPERADMIN.
-Permite criar, bloquear/desbloquear e excluir usuários via UI.
-
-Curl de exemplo (teste de login):
-
+```bash
 curl -i -X POST 'http://localhost:3000/api/auth/login' \
   -H 'Content-Type: application/json' \
   --data '{"email":"admin@local.test","password":"Admin123!"}'
+```
 
-🌐 Integração GDMS (GWN Cloud)
+---
 
-Token OAuth (client_credentials) renovado a cada 1h e guardado em GdmsToken.
+## 🌐 Integração GDMS (GWN Cloud)
 
-Sync:
+* **Token OAuth** (`client_credentials`) renovado a cada **1h** e guardado em `GdmsToken`.
+* **Sync (5 min)**: lista networks paginadas → lista APs paginados.
+* **Normalização**: lat/lon (várias chaves possíveis), status, `networkName`, `lastSyncAt`.
+* **Coordenadas**: se houver lat/lon do usuário, **mantém** (não sobrescreve).
+* **Histórico**: grava em `StatusHistory` quando status muda.
+* **Sync manual**: `POST /api/integrations/gdms/sync`.
 
-A cada 5 min (worker): lista networks paginadas → lista APs paginados.
+> Dica: Se seu Postman/Insomnia interceptar cookies, ative **Enable cookies** e mantenha o domínio correto (ou use `curl`).
 
-Normaliza lat/lon (várias chaves possíveis), atualiza status, networkName, lastSyncAt, mantém lat/lon do usuário.
+---
 
-Registra histórico em StatusHistory quando status muda.
+## 🗺️ Mapa (MapClient)
 
-Sync manual: POST /api/integrations/gdms/sync.
+* **Tiles**: Esri World Imagery (**atribuição exibida** na UI).
+* **Limites**: aprox. de Mogi Mirim (maxBounds) e botão “Cidade”.
+* **Painel lateral**: busca, filtro por status e rede + contagens.
+* **Pins**: **UP** (verde) / **DOWN** (vermelho).
+* **Adicionar antena**: modal com lat/lon (clique no mapa preenche).
+* **Tempo real**: SSE e polling leve para manter os dados atualizados.
 
-Dica: Se seu Postman/Insomnia interceptar cookies, ative “Enable cookies” e mantenha o domínio correto (ou use curl).
+---
 
-🗺️ Mapa (MapClient)
+## 📊 Dashboard
 
-Tiles Esri World Imagery (respeite a atribuição exibida).
+* **Cards**: total, UP, DOWN e percentuais.
+* **Donut** (Recharts).
+* **Lista** filtrável por nome e rede.
+* **Export**: CSV e PDF (com as estatísticas visíveis).
 
-Limites aproximados de Mogi Mirim (maxBounds) e botão “Cidade”.
+---
 
-Painel lateral com busca, filtro por status e rede + contagens.
+## ⚙️ Settings
 
-Pins UP (verde) / DOWN (vermelho).
+* Lista todos os APs importados **sem coordenadas** para você posicionar (lat/lon) e preencher observações.
+* Após salvar, o AP **sai da lista** (mostra apenas os que faltam posicionar).
+* **Botão** “Sincronizar GDMS agora” para import manual.
 
-Adicionar antena: modal com lat/lon (preenchimento por clique no mapa).
+---
 
-Atualiza via SSE e polling leve.
+## 🔌 API (resumo)
 
-📊 Dashboard
+* `GET /api/antennas?take=...&placed=0|1` – lista antenas
+  *Formato*: `{ ok, total, items: Antenna[] }`
+* `POST /api/antennas` – cria antena manual.
+* `PATCH /api/antennas/[id]/coords` – atualiza lat/lon/description.
+* `GET /api/history/[id]` – histórico de status.
+* `GET /api/stats` – totais up/down.
+* `POST /api/integrations/gdms/sync` – sync manual.
+* `GET /api/events` – **SSE**.
+* `POST /api/auth/login` / `POST /api/auth/logout`.
 
-Cards: total, UP, DOWN e percentuais.
+**Admin (exige SUPERADMIN)**
 
-Donut (Recharts).
+* `GET /api/users`
+* `POST /api/users` (criar)
+* `PATCH /api/users/[id]` (bloquear/desbloquear)
+* `DELETE /api/users/[id]`
 
-Lista filtrável por nome e rede.
+---
 
-Export CSV e Export PDF (com as estatísticas visíveis).
+## 🧪 Testes rápidos (curl)
 
-⚙️ Settings
+**Health**
 
-Lista todos os APs importados (ainda sem coordenadas) para você posicionar (lat/lon) e preencher observações.
-
-Após salvar, o AP sai da lista (só mostra os que faltam posicionar).
-
-Botão “Sincronizar GDMS agora” para import manual.
-
-🔌 API (resumo)
-
-GET /api/antennas?take=...&placed=0|1 – lista antenas
-(formato: { ok, total, items: Antenna[] })
-
-POST /api/antennas – cria antena manual.
-
-PATCH /api/antennas/[id]/coords – atualiza lat/lon/description.
-
-GET /api/history/[id] – histórico de status.
-
-GET /api/stats – totais up/down.
-
-POST /api/integrations/gdms/sync – sync manual.
-
-GET /api/events – SSE.
-
-POST /api/auth/login / POST /api/auth/logout
-
-Admin:
-
-GET /api/users
-
-POST /api/users (criar)
-
-PATCH /api/users/[id] (bloquear/desbloquear)
-
-DELETE /api/users/[id]
-
-Todas as rotas /api/users exigem SUPERADMIN (via JWT em cookie).
-
-🧪 Testes rápidos (curl)
-
-Health
-
+```bash
 curl -s http://localhost:3000/api/health
+```
 
+**Stats**
 
-Stats
-
+```bash
 curl -s http://localhost:3000/api/stats
+```
 
+**Antenas colocadas (com lat/lon)**
 
-Antenas colocadas (com lat/lon)
-
+```bash
 curl -s 'http://localhost:3000/api/antennas?placed=1&take=5000'
+```
 
+**Sync GDMS**
 
-Sync GDMS
-
+```bash
 curl -i -X POST http://localhost:3000/api/integrations/gdms/sync
+```
 
-🪪 Build de Produção (sem Docker)
+---
+
+## 🪪 Build de Produção (sem Docker)
+
+```bash
 # instalar deps
 npm ci
 
@@ -318,43 +350,55 @@ npx prisma migrate deploy
 
 # start
 npm run start
+```
 
+> Em servidores atrás de proxy **HTTP** (sem TLS direto na app), se o login não persistir, teste `FORCE_HTTP=true` (apenas para depurar). Em produção com **HTTPS**, mantenha `COOKIE_SECURE=true`.
 
-Dica: em servidores por trás de proxy HTTP (sem TLS direto na app), se o login não persistir, teste FORCE_HTTP=true (apenas para depurar). Em produção com HTTPS, mantenha COOKIE_SECURE=true.
+---
 
-🧰 Troubleshooting
+## 🧰 Troubleshooting
 
-Tela branca / “client-side exception”
+**Tela branca / “client-side exception”**
 Veja o Console do navegador. Geralmente é erro de import/rota/variável.
-Garanta que styles/globals.css é importado corretamente em app/layout.tsx
-(ex.: import "../styles/globals.css"; dependendo do nível).
+Garanta que `styles/globals.css` é importado corretamente em `app/layout.tsx`
+(p.ex.: `import "../styles/globals.css";`, dependendo do nível).
 
-401 no login
+**401 no login**
 
-Verifique se o seed do SUPERADMIN foi executado.
+* Verifique se o **seed** do SUPERADMIN foi executado.
+* Cookies: em produção com **HTTPS**, use `COOKIE_SECURE=true`.
+* Atrás de proxy sem TLS direto, pode precisar temporariamente `FORCE_HTTP=true`.
 
-Cookies: em produção com HTTPS, use COOKIE_SECURE=true. Atrás de proxy sem TLS direto, pode precisar temporariamente FORCE_HTTP=true.
+**“Module not found: jsonwebtoken / leaflet / …”**
+Instale dependências e refaça o build:
 
-“Module not found: jsonwebtoken / leaflet / …”
-Rode npm i jsonwebtoken @types/jsonwebtoken leaflet @types/leaflet e faça build novamente.
-Em Docker, atualize o package-lock.json local e rebuild (docker compose build --no-cache).
+```bash
+npm i jsonwebtoken @types/jsonwebtoken leaflet @types/leaflet
+# Em Docker, atualize o package-lock.json local e rebuild
+docker compose build --no-cache
+```
 
-“The column … does not exist” (Prisma)
+**“The column … does not exist” (Prisma)**
 Execute as migrações:
 
+```bash
 # local
 npx prisma migrate dev
 # docker
 docker compose exec web npx prisma migrate deploy
+```
 
+**GDMS trouxe só 1 AP**
+Confirme token válido, paginação de networks/APs, `GDMS_PAGE_SIZE`, e verifique o `POST /api/integrations/gdms/sync` (resumo retorna `networks`, `totalFetched`, `perNetwork[]`).
 
-GDMS trouxe só 1 AP
-Confirme token válido, paginação de networks/APs, GDMS_PAGE_SIZE, e verifique o POST /api/integrations/gdms/sync (resumo retorna networks, totalFetched, perNetwork[]).
+**Mapa fora da cidade / bounds**
+Os limites são aproximados. Ajuste `CITY_BOUNDS` no `components/MapClient.tsx` se necessário.
 
-Mapa fora da cidade / bounds
-Os limites são aproximados. Ajuste CITY_BOUNDS no components/MapClient.tsx se necessário.
+---
 
-🧪 Checagens úteis (Docker)
+## 🧪 Checagens úteis (Docker)
+
+```bash
 # status containers
 docker compose ps
 
@@ -364,13 +408,17 @@ docker compose logs -f worker
 
 # prisma dentro do container
 docker compose exec web npx prisma studio
+```
 
-📜 Licença
+---
 
-Veja LICENSE.
+## 📜 Licença
 
-🙌 Créditos
+Consulte **LICENSE**.
 
-Esri World Imagery (tiles) – atribuição incluída no mapa.
+---
 
-Ícones FontAwesome, TailwindCSS, Zustand, Prisma, Recharts.
+## 🙌 Créditos
+
+* **Esri World Imagery** (tiles) – atribuição incluída no mapa.
+* Ícones **FontAwesome**, **TailwindCSS**, **Zustand**, **Prisma**, **Recharts**.
