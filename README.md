@@ -356,47 +356,47 @@ npm run start
 
 ---
 
-## 🧰 Troubleshooting
+$1
 
-**Tela branca / “client-side exception”**
-Veja o Console do navegador. Geralmente é erro de import/rota/variável.
-Garanta que `styles/globals.css` é importado corretamente em `app/layout.tsx`
-(p.ex.: `import "../styles/globals.css";`, dependendo do nível).
+**Coluna `User.isBlocked` ausente (erro P2022)**
+Se aparecer `PrismaClientKnownRequestError P2022: The column main.User.isBlocked does not exist`:
 
-**401 no login**
-
-* Verifique se o **seed** do SUPERADMIN foi executado.
-* Cookies: em produção com **HTTPS**, use `COOKIE_SECURE=true`.
-* Atrás de proxy sem TLS direto, pode precisar temporariamente `FORCE_HTTP=true`.
-
-**“Module not found: jsonwebtoken / leaflet / …”**
-Instale dependências e refaça o build:
+**Local (dev):**
 
 ```bash
-npm i jsonwebtoken @types/jsonwebtoken leaflet @types/leaflet
-# Em Docker, atualize o package-lock.json local e rebuild
-docker compose build --no-cache
+npx prisma migrate dev --name add-user-isBlocked --schema=prisma/schema.prisma
 ```
 
-**“The column … does not exist” (Prisma)**
-Execute as migrações:
+**Docker Compose (duas opções):**
+
+* **Recomendado (gerar no host e aplicar no container):**
 
 ```bash
-# local
-npx prisma migrate dev
-# docker
+# gerar migration no host (cria prisma/migrations/*)
+npx prisma migrate dev --name add-user-isBlocked --schema=prisma/schema.prisma
+
+# rebuildar imagem e subir
+docker compose build --no-cache
+docker compose up -d
+
+# aplicar no banco dentro do container
 docker compose exec web npx prisma migrate deploy
 ```
 
-**GDMS trouxe só 1 AP**
-Confirme token válido, paginação de networks/APs, `GDMS_PAGE_SIZE`, e verifique o `POST /api/integrations/gdms/sync` (resumo retorna `networks`, `totalFetched`, `perNetwork[]`).
+* **Alternativo (não persiste no repositório):**
 
-**Mapa fora da cidade / bounds**
-Os limites são aproximados. Ajuste `CITY_BOUNDS` no `components/MapClient.tsx` se necessário.
+```bash
+docker compose exec web npx prisma migrate dev --name add-user-isBlocked --schema=prisma/schema.prisma
+```
 
----
+**Depois:**
 
-## 🧪 Checagens úteis (Docker)
+```bash
+# reexecutar seed se necessário
+docker compose exec web node ./scripts/seed-local.mjs
+```
+
+$2
 
 ```bash
 # status containers
