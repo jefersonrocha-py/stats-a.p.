@@ -12,12 +12,12 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const ml = sidebarOpen ? "ml-64" : "ml-16";
+  const ml = sidebarOpen ? "ml-72" : "ml-20";
 
   return (
     <div
       className={`relative flex flex-col min-h-screen transition-[margin] duration-300 ${
-        mounted ? ml : "ml-16"
+        mounted ? ml : "ml-20"
       }`}
     >
       <TopBar />

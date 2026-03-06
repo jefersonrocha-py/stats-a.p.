@@ -17,7 +17,6 @@ COPY prisma ./prisma
 RUN npx prisma generate --schema=prisma/schema.prisma
 COPY . .
 RUN npm run build
-RUN npm prune --omit=dev
 
 FROM base AS runner
 ENV NODE_ENV=production \
@@ -27,6 +26,7 @@ WORKDIR /app
 
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
+# The entrypoint applies Prisma schema changes on boot, so the runtime image needs the Prisma CLI.
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public

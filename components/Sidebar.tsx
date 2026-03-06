@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faChartPie,
+  faFilter,
   faGear,
+  faLocationDot,
   faMap,
   faShieldHalved,
 } from "@fortawesome/free-solid-svg-icons";
@@ -13,11 +15,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { UrlObject } from "url";
 import { useUIStore } from "@store/ui";
+import { connectSSE } from "@services/sseClient";
 
 type Role = "SUPERADMIN" | "ADMIN" | "USER";
-type MeResp =
+type MeResponse =
   | { ok: true; user: { id: string | number; name: string; email: string; role: Role } }
   | { ok: false; error: string };
+type StatsResponse = { ok: true; total: number; up: number; down: number } | { ok: false; error: string };
 
 type NavLink = {
   path: string;
@@ -26,7 +30,7 @@ type NavLink = {
   label: string;
 };
 
-type ItemProps = {
+type NavItemProps = {
   href: UrlObject;
   icon: any;
   label: string;
@@ -35,15 +39,27 @@ type ItemProps = {
   onClick?: () => void;
 };
 
-function NavItem({ href, icon, label, open, active, onClick }: ItemProps) {
+type SidebarContentProps = {
+  open: boolean;
+  role: Role | null;
+  userName: string;
+  clockLabel: string;
+  dateLabel: string;
+  stats: { total: number; up: number; down: number };
+  pathname: string;
+  onNavigate?: () => void;
+  mobile?: boolean;
+};
+
+function NavItem({ href, icon, label, open, active, onClick }: NavItemProps) {
   return (
     <Link
       href={href}
       title={label}
       onClick={onClick}
       prefetch={false}
-      className={`group flex items-center gap-3 rounded-lg px-3 py-2 ${
-        active ? "bg-white/10" : ""
+      className={`group flex items-center gap-3 rounded-2xl px-3 py-2.5 transition ${
+        active ? "bg-white/12 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]" : ""
       } hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400`}
       aria-current={active ? "page" : undefined}
     >
@@ -100,11 +116,229 @@ function Hamburger({
   );
 }
 
+function SidebarFooterPanel({
+  open,
+  userName,
+  clockLabel,
+  dateLabel,
+  stats,
+}: {
+  open: boolean;
+  userName: string;
+  clockLabel: string;
+  dateLabel: string;
+  stats: { total: number; up: number; down: number };
+}) {
+  if (!open) {
+    return (
+      <div className="space-y-2 p-2">
+        <MiniStatus label="ON" value={stats.up} tone="emerald" />
+        <MiniStatus label="OFF" value={stats.down} tone="rose" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 border-t border-white/10 p-3">
+      <div className="rounded-2xl border border-white/10 bg-white/8 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="text-xs uppercase tracking-[0.22em] text-white/60">Bem-vindo</div>
+        <div className="mt-1 text-lg font-semibold">{userName}</div>
+        <div className="mt-3 rounded-2xl bg-black/20 px-4 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="font-mono text-2xl tracking-[0.16em]">{clockLabel}</div>
+          <div className="mt-1 text-xs uppercase tracking-[0.2em] text-white/60">{dateLabel}</div>
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <StatusCard label="APs ON" value={stats.up} tone="emerald" />
+        <StatusCard label="APs OFF" value={stats.down} tone="rose" />
+        <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
+          Total monitorado: <strong className="text-white">{stats.total}</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "emerald" | "rose";
+}) {
+  const iconClasses =
+    tone === "emerald"
+      ? "bg-emerald-500/20 text-emerald-300"
+      : "bg-rose-500/20 text-rose-300";
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/8 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <span className={`grid h-10 w-10 place-items-center rounded-2xl ${iconClasses}`}>
+        <FontAwesomeIcon icon={faLocationDot} className="h-4 w-4" />
+      </span>
+      <div>
+        <div className="text-xs uppercase tracking-[0.18em] text-white/55">{label}</div>
+        <div className="text-xl font-semibold">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStatus({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "emerald" | "rose";
+}) {
+  const iconClasses =
+    tone === "emerald"
+      ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-300"
+      : "border-rose-400/30 bg-rose-500/15 text-rose-300";
+
+  return (
+    <div className={`rounded-2xl border px-2 py-2 text-center text-[11px] ${iconClasses}`}>
+      <div className="uppercase tracking-[0.18em]">{label}</div>
+      <div className="mt-1 text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function SidebarContent({
+  open,
+  role,
+  userName,
+  clockLabel,
+  dateLabel,
+  stats,
+  pathname,
+  onNavigate,
+  mobile = false,
+}: SidebarContentProps) {
+  const canManage = role === "ADMIN" || role === "SUPERADMIN";
+  const navClick = mobile ? onNavigate : undefined;
+  const links: NavLink[] = [
+    { path: "/", href: { pathname: "/" }, icon: faMap, label: "Mapa" },
+    { path: "/dashboard", href: { pathname: "/dashboard" }, icon: faChartPie, label: "Dashboard" },
+    {
+      path: "/filter-cluster",
+      href: { pathname: "/filter-cluster" },
+      icon: faFilter,
+      label: "Filtros Cluster",
+    },
+    ...(canManage
+      ? [{ path: "/settings", href: { pathname: "/settings" }, icon: faGear, label: "Configuracoes" }]
+      : []),
+  ];
+
+  const isActive = (path: string) => (path === "/" ? pathname === "/" : pathname.startsWith(path));
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex min-h-[64px] items-center gap-2 border-b border-white/10 p-3">
+        {mobile ? (
+          <button
+            type="button"
+            onClick={onNavigate}
+            aria-label="Fechar menu"
+            className="grid h-10 w-10 place-items-center rounded-xl bg-black/5 transition hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            title="Fechar menu"
+          >
+            <span className="relative block h-[2px] w-5 rotate-45 bg-current after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
+          </button>
+        ) : (
+          <Hamburger
+            open={open}
+            onClick={onNavigate || (() => undefined)}
+            title="Expandir ou recolher"
+          />
+        )}
+
+        {open ? (
+          <>
+            <Image
+              src="/logo_etherium.png"
+              alt="Etheriumtech"
+              width={220}
+              height={56}
+              className="h-7 w-auto brightness-0 invert"
+              priority
+            />
+            <span className="ml-auto rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/65">
+              v1.0.0
+            </span>
+          </>
+        ) : (
+          <Image
+            src="/logo_etherium.png"
+            alt="Etheriumtech"
+            width={40}
+            height={40}
+            className="h-8 w-8 object-contain object-left brightness-0 invert"
+            priority
+          />
+        )}
+      </div>
+
+      <nav className="space-y-1 overflow-y-auto p-2">
+        {links.map((link) => (
+          <NavItem
+            key={link.path}
+            href={link.href}
+            icon={link.icon}
+            label={link.label}
+            open={open}
+            active={isActive(link.path)}
+            onClick={navClick}
+          />
+        ))}
+
+        {role === "SUPERADMIN" && (
+          <>
+            {open ? (
+              <div className="mt-4 px-3 text-xs uppercase tracking-[0.22em] text-white/50">
+                Administracao
+              </div>
+            ) : (
+              <div className="mt-3" />
+            )}
+            <NavItem
+              href={{ pathname: "/admin" }}
+              icon={faShieldHalved}
+              label="Painel"
+              open={open}
+              active={isActive("/admin")}
+              onClick={navClick}
+            />
+          </>
+        )}
+      </nav>
+
+      <div className="mt-auto">
+        <SidebarFooterPanel
+          open={open}
+          userName={userName}
+          clockLabel={clockLabel}
+          dateLabel={dateLabel}
+          stats={stats}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
   const [role, setRole] = useState<Role | null>(null);
-  const canManage = role === "ADMIN" || role === "SUPERADMIN";
+  const [userName, setUserName] = useState("Usuario");
+  const [stats, setStats] = useState({ total: 0, up: 0, down: 0 });
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -116,34 +350,93 @@ export default function Sidebar() {
   }, [setSidebarOpen]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     let alive = true;
 
-    (async () => {
+    async function loadSidebarData() {
       try {
-        const response = await fetch("/api/me", { cache: "no-store" });
-        const json: MeResp = await response.json();
+        const [meResponse, statsResponse] = await Promise.all([
+          fetch("/api/me", { cache: "no-store" }),
+          fetch("/api/stats", { cache: "no-store" }),
+        ]);
+
+        const meJson: MeResponse = await meResponse.json();
+        const statsJson: StatsResponse = await statsResponse.json();
         if (!alive) return;
-        if ("ok" in json && json.ok) setRole(json.user.role);
-        else setRole(null);
+
+        if (meJson.ok) {
+          setRole(meJson.user.role);
+          setUserName(meJson.user.name || "Usuario");
+        } else {
+          setRole(null);
+          setUserName("Usuario");
+        }
+
+        if (statsJson.ok) {
+          setStats({
+            total: statsJson.total ?? 0,
+            up: statsJson.up ?? 0,
+            down: statsJson.down ?? 0,
+          });
+        } else {
+          setStats({ total: 0, up: 0, down: 0 });
+        }
       } catch {
-        if (alive) setRole(null);
+        if (alive) {
+          setRole(null);
+          setUserName("Usuario");
+          setStats({ total: 0, up: 0, down: 0 });
+        }
       }
-    })();
+    }
+
+    loadSidebarData();
+    const refreshTimer = window.setInterval(loadSidebarData, 60_000);
+    const disconnect = connectSSE((event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (
+          ["antenna.created", "antenna.updated", "antenna.deleted", "status.changed"].includes(
+            payload.event
+          )
+        ) {
+          loadSidebarData();
+        }
+      } catch {}
+    });
 
     return () => {
       alive = false;
+      window.clearInterval(refreshTimer);
+      disconnect();
     };
   }, []);
 
-  const links: NavLink[] = [
-    { path: "/", href: { pathname: "/" }, icon: faMap, label: "Mapa" },
-    { path: "/dashboard", href: { pathname: "/dashboard" }, icon: faChartPie, label: "Dashboard" },
-    ...(canManage
-      ? [{ path: "/settings", href: { pathname: "/settings" }, icon: faGear, label: "Configuracoes" }]
-      : []),
-  ];
+  const clockLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(now),
+    [now]
+  );
 
-  const isActive = (path: string) => (path === "/" ? pathname === "/" : pathname.startsWith(path));
+  const dateLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("pt-BR", {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+      }).format(now),
+    [now]
+  );
+
+  const firstName = useMemo(() => userName.trim().split(/\s+/)[0] || "Usuario", [userName]);
 
   return (
     <>
@@ -158,128 +451,51 @@ export default function Sidebar() {
       <aside
         id="app-sidebar"
         className={`fixed left-0 top-0 z-50 hidden h-screen flex-col text-white transition-all duration-300 ease-out md:flex ${
-          sidebarOpen ? "md:w-64" : "md:w-16"
+          sidebarOpen ? "md:w-72" : "md:w-20"
         }`}
         style={{
           background:
-            "linear-gradient(180deg, rgba(41,107,104,1) 0%, rgba(58,60,57,1) 45%, rgba(8,255,184,0.35) 100%)",
+            "linear-gradient(180deg, rgba(16,78,76,1) 0%, rgba(30,41,41,1) 42%, rgba(12,129,96,0.92) 100%)",
         }}
       >
-        <div className="flex min-h-[56px] items-center gap-2 border-b border-white/10 p-3">
-          <Hamburger
-            open={sidebarOpen}
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            title="Expandir ou recolher"
-          />
-          {sidebarOpen ? (
-            <>
-              <Image
-                src="https://etheriumtech.com.br/wp-content/uploads/2024/04/LOGO-BRANCO.png"
-                alt="Etheriumtech"
-                width={160}
-                height={40}
-                className="h-6 w-auto"
-              />
-              <span className="ml-auto text-xs opacity-80">v1.0.0</span>
-            </>
-          ) : (
-            <div className="h-6 w-6 rounded-lg bg-white/15" aria-hidden />
-          )}
-        </div>
-
-        <nav className="space-y-1 overflow-y-auto p-2">
-          {links.map((link) => (
-            <NavItem
-              key={link.path}
-              href={link.href}
-              icon={link.icon}
-              label={link.label}
-              open={sidebarOpen}
-              active={isActive(link.path)}
-            />
-          ))}
-
-          {role === "SUPERADMIN" && (
-            <>
-              {sidebarOpen ? (
-                <div className="mt-4 px-3 text-xs uppercase tracking-wide opacity-70">Administrador</div>
-              ) : (
-                <div className="mt-4 px-1" />
-              )}
-              <NavItem
-                href={{ pathname: "/admin" }}
-                icon={faShieldHalved}
-                label="Painel"
-                open={sidebarOpen}
-                active={isActive("/admin")}
-              />
-            </>
-          )}
-        </nav>
+        <SidebarContent
+          open={sidebarOpen}
+          role={role}
+          userName={firstName}
+          clockLabel={clockLabel}
+          dateLabel={dateLabel}
+          stats={stats}
+          pathname={pathname}
+          onNavigate={() => setSidebarOpen(!sidebarOpen)}
+        />
       </aside>
 
       <aside
-        className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col text-white transition-transform duration-300 md:hidden ${
+        className={`fixed left-0 top-0 z-50 flex h-screen w-80 flex-col text-white transition-transform duration-300 md:hidden ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{
           background:
-            "linear-gradient(180deg, rgba(41,107,104,1) 0%, rgba(58,60,57,1) 45%, rgba(8,255,184,0.35) 100%)",
+            "linear-gradient(180deg, rgba(16,78,76,1) 0%, rgba(30,41,41,1) 42%, rgba(12,129,96,0.92) 100%)",
         }}
         aria-hidden={!sidebarOpen}
       >
-        <div className="flex min-h-[56px] items-center gap-2 border-b border-white/10 p-3">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Fechar menu"
-            className="grid h-9 w-9 place-items-center rounded-lg bg-black/5 hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            title="Fechar menu"
-          >
-            <span className="relative block h-[2px] w-5 rotate-45 bg-current after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
-          </button>
-          <Image
-            src="https://etheriumtech.com.br/wp-content/uploads/2024/04/LOGO-BRANCO.png"
-            alt="Etheriumtech"
-            width={160}
-            height={40}
-            className="ml-1 h-6 w-auto"
-          />
-          <span className="ml-auto text-xs opacity-80">v1.0.0</span>
-        </div>
-
-        <nav className="space-y-1 overflow-y-auto p-2">
-          {links.map((link) => (
-            <NavItem
-              key={`m-${link.path}`}
-              href={link.href}
-              icon={link.icon}
-              label={link.label}
-              open={true}
-              active={isActive(link.path)}
-              onClick={() => setSidebarOpen(false)}
-            />
-          ))}
-
-          {role === "SUPERADMIN" && (
-            <>
-              <div className="mt-4 px-3 text-xs uppercase tracking-wide opacity-70">Administrador</div>
-              <NavItem
-                href={{ pathname: "/admin" }}
-                icon={faShieldHalved}
-                label="Painel"
-                open={true}
-                active={isActive("/admin")}
-                onClick={() => setSidebarOpen(false)}
-              />
-            </>
-          )}
-        </nav>
+        <SidebarContent
+          open={true}
+          role={role}
+          userName={firstName}
+          clockLabel={clockLabel}
+          dateLabel={dateLabel}
+          stats={stats}
+          pathname={pathname}
+          onNavigate={() => setSidebarOpen(false)}
+          mobile
+        />
       </aside>
 
       <div
         aria-hidden
-        className={`hidden transition-[width] duration-300 md:block ${sidebarOpen ? "w-64" : "w-16"}`}
+        className={`hidden transition-[width] duration-300 md:block ${sidebarOpen ? "w-72" : "w-20"}`}
       />
     </>
   );

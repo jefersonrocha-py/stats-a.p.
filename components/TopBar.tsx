@@ -103,7 +103,7 @@ export default function TopBar() {
         <div className="mx-auto max-w-[1600px] px-3 sm:px-4 py-2.5">
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Espaço reservado para alinhar com a largura do sidebar colapsado/expandido */}
-            <div className="hidden md:block w-16" aria-hidden />
+            <div className="hidden md:block w-20" aria-hidden />
 
             {/* Busca */}
             <div className="flex-1">

@@ -16,13 +16,19 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = (searchParams.get("status") as "UP" | "DOWN" | null) ?? null;
     const q = (searchParams.get("q") || "").trim();
+    const network = (searchParams.get("network") || "").trim();
     const unsaved = searchParams.get("unsaved");
     const placed = searchParams.get("placed");
-    const takeParam = Number(searchParams.get("take") ?? 5000);
-    const take = Number.isFinite(takeParam) ? Math.min(Math.max(takeParam, 1), 10000) : 5000;
+    const pageParam = Number(searchParams.get("page") ?? 1);
+    const pageSizeParam = Number(searchParams.get("pageSize") ?? searchParams.get("take") ?? 5000);
+    const page = Number.isFinite(pageParam) ? Math.max(1, Math.floor(pageParam)) : 1;
+    const pageSize = Number.isFinite(pageSizeParam)
+      ? Math.min(Math.max(Math.floor(pageSizeParam), 1), 10000)
+      : 5000;
 
     const where: any = {};
     if (status) where.status = status;
+    if (network) where.networkName = network;
     if (q) {
       where.OR = [
         { name: { contains: q, mode: "insensitive" } },
@@ -34,21 +40,27 @@ export async function GET(req: Request) {
       where.lon = 0;
     }
     if (placed === "1") {
-      where.AND = [
-        { lat: { not: 0 } },
-        { lon: { not: 0 } },
-      ];
+      where.AND = [{ lat: { not: 0 } }, { lon: { not: 0 } }];
     }
 
-    const [items, totalCount] = await Promise.all([
-      prisma.antenna.findMany({ where, orderBy: { id: "asc" }, take }),
-      prisma.antenna.count({ where }),
-    ]);
+    const totalCount = await prisma.antenna.count({ where });
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const currentPage = Math.min(page, totalPages);
+    const skip = (currentPage - 1) * pageSize;
+    const items = await prisma.antenna.findMany({
+      where,
+      orderBy: { id: "asc" },
+      skip,
+      take: pageSize,
+    });
 
     return NextResponse.json({
       ok: true,
       total: items.length,
       totalCount,
+      page: currentPage,
+      pageSize,
+      totalPages,
       items: items.map((item) => ({ ...item, updatedAt: item.updatedAt.toISOString() })),
     });
   } catch (e) {

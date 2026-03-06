@@ -1,3 +1,10 @@
+x-app-image: &app_image
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: ${APP_IMAGE}
+  pull_policy: never
+
 services:
   mysql:
     image: ${MYSQL_IMAGE}
@@ -26,10 +33,7 @@ services:
       - app_net
 
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${APP_IMAGE}
+    <<: *app_image
     container_name: monitoring-web
     restart: unless-stopped
     environment:
@@ -71,7 +75,7 @@ services:
       - app_net
 
   worker:
-    image: ${APP_IMAGE}
+    <<: *app_image
     container_name: monitoring-gdms-cron
     restart: unless-stopped
     environment:
