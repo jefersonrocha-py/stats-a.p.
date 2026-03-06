@@ -3,8 +3,8 @@ export const dynamic = "force-dynamic";
 
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { mapPrismaError } from "@lib/prismaErrors";
-import { prisma } from "@lib/prisma";
+import { mapDbError } from "@lib/dbErrors";
+import { dbExecute } from "@lib/mysql";
 import { registerSchema } from "@lib/validatorsAuth";
 
 const ALLOW = process.env.ALLOW_SELF_REGISTER === "true";
@@ -17,22 +17,18 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const { name, email, password } = registerSchema.parse(body);
+    const normalizedEmail = email.toLowerCase();
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email: email.toLowerCase(),
-        passwordHash,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
-    });
+    const result = await dbExecute(
+      "INSERT INTO `User` (`name`, `email`, `passwordHash`, `role`, `isBlocked`, `createdAt`) VALUES (?, ?, ?, 'USER', 0, ?)",
+      [name, normalizedEmail, passwordHash, new Date()]
+    );
 
-    return NextResponse.json({ ok: true, user }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, user: { id: result.insertId, name, email: normalizedEmail } },
+      { status: 201 }
+    );
   } catch (e: any) {
     if (e?.name === "ZodError") {
       return NextResponse.json(
@@ -41,7 +37,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const mapped = mapPrismaError(e);
+    const mapped = mapDbError(e);
     return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }

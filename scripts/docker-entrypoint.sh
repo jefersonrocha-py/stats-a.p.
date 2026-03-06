@@ -2,7 +2,7 @@
 set -eu
 
 echo "Applying database schema..."
-npx prisma db push --skip-generate
+node scripts/init-db.mjs
 
 if [ -n "${SUPERADMIN_EMAIL:-}" ] && [ -n "${SUPERADMIN_PASSWORD:-}" ]; then
   echo "Ensuring superadmin user exists..."

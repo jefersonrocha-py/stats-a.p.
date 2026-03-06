@@ -1,21 +1,21 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import type { RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { requireRequestAuth } from "@lib/auth";
-import { prisma } from "@lib/prisma";
+import { dbQuery } from "@lib/mysql";
+
+type NetworkRow = RowDataPacket & { networkName: string | null };
 
 export async function GET(req: Request) {
   try {
     const auth = await requireRequestAuth(req);
     if ("response" in auth) return auth.response;
 
-    const rows = await prisma.antenna.findMany({
-      where: { networkName: { not: null } },
-      distinct: ["networkName"],
-      select: { networkName: true },
-      orderBy: { networkName: "asc" },
-    });
+    const rows = await dbQuery<NetworkRow>(
+      "SELECT DISTINCT TRIM(`networkName`) AS `networkName` FROM `Antenna` WHERE `networkName` IS NOT NULL AND TRIM(`networkName`) <> '' ORDER BY TRIM(`networkName`) ASC"
+    );
 
     return NextResponse.json({
       ok: true,

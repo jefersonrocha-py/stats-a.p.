@@ -124,17 +124,35 @@ function Hamburger({
   );
 }
 
-function SidebarFooterPanel({
-  open,
+function WelcomePanel({
   userName,
   clockLabel,
   dateLabel,
-  stats,
 }: {
-  open: boolean;
   userName: string;
   clockLabel: string;
   dateLabel: string;
+}) {
+  return (
+    <div className="border-b border-white/10 p-3">
+      <div className="rounded-2xl border border-white/10 bg-white/8 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="text-xs uppercase tracking-[0.22em] text-white/60">Bem-vindo</div>
+        <div className="mt-1 text-lg font-semibold">{userName}</div>
+        <div className="mt-3 rounded-2xl bg-black/20 px-4 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="font-mono text-2xl tracking-[0.16em]">{clockLabel}</div>
+          <div className="mt-1 text-xs uppercase tracking-[0.2em] text-white/60">{dateLabel}</div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+function SidebarFooterPanel({
+  open,
+  stats,
+}: {
+  open: boolean;
   stats: { total: number; up: number; down: number };
 }) {
   if (!open) {
@@ -148,15 +166,6 @@ function SidebarFooterPanel({
 
   return (
     <div className="space-y-3 border-t border-white/10 p-3">
-      <div className="rounded-2xl border border-white/10 bg-white/8 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <div className="text-xs uppercase tracking-[0.22em] text-white/60">Bem-vindo</div>
-        <div className="mt-1 text-lg font-semibold">{userName}</div>
-        <div className="mt-3 rounded-2xl bg-black/20 px-4 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-          <div className="font-mono text-2xl tracking-[0.16em]">{clockLabel}</div>
-          <div className="mt-1 text-xs uppercase tracking-[0.2em] text-white/60">{dateLabel}</div>
-        </div>
-      </div>
-
       <div className="grid gap-2">
         <StatusCard label="APs ON" value={stats.up} tone="emerald" />
         <StatusCard label="APs OFF" value={stats.down} tone="rose" />
@@ -298,6 +307,14 @@ function SidebarContent({
         )}
       </div>
 
+      {open ? (
+        <WelcomePanel
+          userName={userName}
+          clockLabel={clockLabel}
+          dateLabel={dateLabel}
+        />
+      ) : null}
+
       <nav className="space-y-1 overflow-y-auto p-2">
         {links.map((link) => (
           <NavItem
@@ -335,9 +352,6 @@ function SidebarContent({
       <div className="mt-auto">
         <SidebarFooterPanel
           open={open}
-          userName={userName}
-          clockLabel={clockLabel}
-          dateLabel={dateLabel}
           stats={stats}
         />
       </div>

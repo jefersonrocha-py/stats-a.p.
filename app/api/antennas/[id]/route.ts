@@ -1,10 +1,12 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import type { RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { requireRequestAuth } from "@lib/auth";
-import { mapPrismaError } from "@lib/prismaErrors";
-import { prisma } from "@lib/prisma";
+import { mapAntennaRow } from "@lib/dbMappers";
+import { mapDbError } from "@lib/dbErrors";
+import { dbExecute, dbQueryOne, withTransaction } from "@lib/mysql";
 import { emit } from "@lib/sse";
 import { antennaUpdateSchema } from "@lib/validators";
 
@@ -13,6 +15,22 @@ const patchSchema = antennaUpdateSchema.pick({
   description: true,
   status: true,
 });
+
+type AntennaRow = RowDataPacket & {
+  id: number;
+  name: string;
+  description: string | null;
+  lat: number;
+  lon: number;
+  status: string;
+  gdmsApId: string | null;
+  networkId: string | null;
+  networkName: string | null;
+  lastSyncAt: Date | string | null;
+  lastStatusChange: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+};
 
 export async function GET(req: Request, ctx: { params: { id: string } }) {
   const auth = await requireRequestAuth(req);
@@ -23,12 +41,15 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
     return NextResponse.json({ ok: false, error: "INVALID_ID" }, { status: 400 });
   }
 
-  const item = await prisma.antenna.findUnique({ where: { id: idNum } });
+  const item = await dbQueryOne<AntennaRow>(
+    "SELECT * FROM `Antenna` WHERE `id` = ? LIMIT 1",
+    [idNum]
+  );
   if (!item) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true, item });
+  return NextResponse.json({ ok: true, item: mapAntennaRow(item) });
 }
 
 export async function PATCH(req: Request, ctx: { params: { id: string } }) {
@@ -49,7 +70,7 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     );
   }
 
-  const data: any = {};
+  const data: Record<string, string | Date> = {};
   if (typeof parsed.data.name === "string") data.name = parsed.data.name.trim();
   if (typeof parsed.data.description === "string") {
     data.description = parsed.data.description.trim();
@@ -60,31 +81,78 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     return NextResponse.json({ ok: false, error: "NOTHING_TO_UPDATE" }, { status: 400 });
   }
 
-  const before = await prisma.antenna.findUnique({
-    where: { id: idNum },
-    select: { id: true, status: true },
-  });
+  const before = await dbQueryOne<AntennaRow>(
+    "SELECT `id`, `status` FROM `Antenna` WHERE `id` = ? LIMIT 1",
+    [idNum]
+  );
   if (!before) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
   }
 
-  if (data.status && data.status !== before.status) {
-    data.lastStatusChange = new Date();
-  }
+  const statusChanged = typeof data.status === "string" && data.status !== before.status;
+  const now = new Date();
 
   try {
-    const item = await prisma.antenna.update({ where: { id: idNum }, data });
+    const item = await withTransaction(async (connection) => {
+      const assignments: string[] = [];
+      const values: Array<string | Date> = [];
 
-    if (data.status && data.status !== before.status) {
-      await prisma.statusHistory.create({ data: { antennaId: idNum, status: data.status } });
+      if (data.name !== undefined) {
+        assignments.push("`name` = ?");
+        values.push(data.name);
+      }
+      if (data.description !== undefined) {
+        assignments.push("`description` = ?");
+        values.push(data.description);
+      }
+      if (data.status !== undefined) {
+        assignments.push("`status` = ?");
+        values.push(data.status);
+      }
+      if (statusChanged) {
+        assignments.push("`lastStatusChange` = ?");
+        values.push(now);
+      }
+      assignments.push("`updatedAt` = ?");
+      values.push(now);
+      values.push(String(idNum));
+
+      await dbExecute(
+        `UPDATE \`Antenna\` SET ${assignments.join(", ")} WHERE \`id\` = ?`,
+        values,
+        connection
+      );
+
+      if (statusChanged && data.status) {
+        await dbExecute(
+          "INSERT INTO `StatusHistory` (`antennaId`, `status`, `changedAt`) VALUES (?, ?, ?)",
+          [idNum, data.status, now],
+          connection
+        );
+      }
+
+      const row = await dbQueryOne<AntennaRow>(
+        "SELECT * FROM `Antenna` WHERE `id` = ? LIMIT 1",
+        [idNum],
+        connection
+      );
+
+      if (!row) {
+        throw new Error("UPDATED_ANTENNA_NOT_FOUND");
+      }
+
+      return row;
+    });
+
+    if (statusChanged && data.status) {
       emit("status.changed", { id: idNum, status: data.status });
     } else {
       emit("antenna.updated", { id: idNum });
     }
 
-    return NextResponse.json({ ok: true, item });
+    return NextResponse.json({ ok: true, item: mapAntennaRow(item) });
   } catch (e) {
-    const mapped = mapPrismaError(e);
+    const mapped = mapDbError(e);
     return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }
@@ -99,11 +167,28 @@ export async function DELETE(req: Request, ctx: { params: { id: string } }) {
   }
 
   try {
-    const item = await prisma.antenna.delete({ where: { id: idNum } });
+    const item = await withTransaction(async (connection) => {
+      const row = await dbQueryOne<AntennaRow>(
+        "SELECT * FROM `Antenna` WHERE `id` = ? LIMIT 1",
+        [idNum],
+        connection
+      );
+      if (!row) return null;
+
+      await dbExecute("DELETE FROM `StatusHistory` WHERE `antennaId` = ?", [idNum], connection);
+      await dbExecute("DELETE FROM `Antenna` WHERE `id` = ?", [idNum], connection);
+
+      return row;
+    });
+
+    if (!item) {
+      return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+    }
+
     emit("antenna.deleted", { id: idNum });
-    return NextResponse.json({ ok: true, item });
+    return NextResponse.json({ ok: true, item: mapAntennaRow(item) });
   } catch (e) {
-    const mapped = mapPrismaError(e);
+    const mapped = mapDbError(e);
     return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }

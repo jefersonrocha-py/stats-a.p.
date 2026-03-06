@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import bcrypt from "bcryptjs";
+import type { RowDataPacket } from "mysql2/promise";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
@@ -11,8 +12,17 @@ import {
   signAuthToken,
   type UserRole,
 } from "@lib/auth";
-import { prisma } from "@lib/prisma";
+import { dbQueryOne } from "@lib/mysql";
 import { loginSchema } from "@lib/validatorsAuth";
+
+type UserRow = RowDataPacket & {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+  passwordHash: string;
+  isBlocked: number | boolean;
+};
 
 export async function POST(req: Request) {
   try {
@@ -27,23 +37,16 @@ export async function POST(req: Request) {
 
     const { email, password } = parsed.data;
 
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        passwordHash: true,
-        isBlocked: true,
-      },
-    });
+    const user = await dbQueryOne<UserRow>(
+      "SELECT `id`, `email`, `name`, `role`, `passwordHash`, `isBlocked` FROM `User` WHERE `email` = ? LIMIT 1",
+      [email.toLowerCase()]
+    );
 
     if (!user) {
       return NextResponse.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
-    if (user.isBlocked) {
+    if (user.isBlocked === true || user.isBlocked === 1 || user.isBlocked === "1") {
       return NextResponse.json({ ok: false, error: "USER_BLOCKED" }, { status: 403 });
     }
 

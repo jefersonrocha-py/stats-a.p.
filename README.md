@@ -1,6 +1,6 @@
 # Etherium Antennas — Map + Dashboard (Next.js)
 
-Aplicação **full‑stack** para cadastrar e mapear antenas Wi‑Fi com mapa satélite (centrado em **Mogi Mirim/SP**), dashboard dinâmico, **tema light/dark**, **tempo real (SSE)**, **Docker** e **SQLite/Prisma**.
+Aplicação **full-stack** para cadastrar e mapear antenas Wi-Fi com mapa satélite (centrado em **Mogi Mirim/SP**), dashboard dinâmico, **tema light/dark**, **tempo real (SSE)**, **Docker** e **MySQL**.
 
 Integra com o **GDMS (GWN Cloud)** para importar APs, redes e status online/offline a cada **5 minutos** (worker) e **renova o token OAuth automaticamente** a cada **1 hora**.
 
@@ -11,7 +11,7 @@ Integra com o **GDMS (GWN Cloud)** para importar APs, redes e status online/offl
 * [Recursos](#-recursos)
 * [Arquitetura (alto nível)](#-arquitetura-alto-nível)
 * [Estrutura de Pastas](#️-estrutura-de-pastas-resumo)
-* [Modelos (Prisma)](#-modelos-prisma--resumo)
+* [Modelos](#-modelos--resumo)
 * [Variáveis de Ambiente](#-variáveis-de-ambiente)
 * [Setup Local (dev)](#️-setup-local-dev)
 * [Rodando com Docker](#-rodando-com-docker)
@@ -45,7 +45,7 @@ Integra com o **GDMS (GWN Cloud)** para importar APs, redes e status online/offl
 ## 🧱 Arquitetura (alto nível)
 
 * **Next.js 14** (App Router, TypeScript) – UI e rotas API.
-* **Prisma + SQLite** – persistência (**Antenna**, **StatusHistory**, **User**, **GdmsToken**).
+* **MySQL + mysql2** – persistência (**Antenna**, **StatusHistory**, **User**, **gdms_token**).
 * **GDMS Service** – client HTTP assinado, paginação, pooling/cron.
 * **Worker** (`scripts/gdms-cron.mjs`) – sincronismo **5 min** (status) + **60 min** (token).
 * **SSE** – stream de eventos para UI (dashboard/mapa).
@@ -78,12 +78,11 @@ etherium-antennas/
 │  ├─ layout.tsx
 │  └─ page.tsx             # (se aplicável)
 ├─ components/             # MapClient, DashboardCards, DonutChart, Sidebar, etc.
-├─ lib/                    # auth, prisma, sse, csv, validators, gdmsToken
+├─ lib/                    # auth, mysql, sse, csv, validators, gdmsToken
 ├─ services/               # api client, sse client, gdms client
 ├─ store/                  # zustand (theme/ui)
-├─ prisma/
-│  ├─ schema.prisma
-│  └─ migrations/          # geradas pelo prisma
+├─ db/
+│  └─ schema.sql           # estrutura inicial do MySQL
 ├─ public/
 │  └─ icons.svg
 ├─ styles/
@@ -103,7 +102,7 @@ etherium-antennas/
 
 ---
 
-## 🧬 Modelos (Prisma – resumo)
+## 🧬 Modelos (resumo)
 
 **Antenna**: `id`, `name`, `lat`, `lon`, `description`, `status` ("UP"|"DOWN"),
 `gdmsApId?`, `networkId?`, `networkName?`, `lastSyncAt?`, `lastStatusChange?`, timestamps.
@@ -130,8 +129,8 @@ JWT_EXPIRES_DAYS=7
 COOKIE_SECURE=false        # true em produção HTTPS
 FORCE_HTTP=false           # true em dev por trás de proxy sem TLS
 
-# Banco (em dev)
-DATABASE_URL=file:./dev.sqlite
+# Banco
+DATABASE_URL=mysql://app:app123@127.0.0.1:3306/monitoring
 
 # GDMS (GWN Cloud)
 GDMS_BASE_URL=https://www.gwn.cloud
@@ -149,7 +148,7 @@ SUPERADMIN_PASSWORD=Admin123!
 SUPERADMIN_NAME=Root
 ```
 
-> **Produção (Docker):** o `docker-compose.yml` sobrescreve `DATABASE_URL` para `file:/data/app.sqlite` (volume).
+> **Produção (Docker):** o `docker-compose.yml` aponta `DATABASE_URL` para o container `mysql` e persiste os dados no volume `mysql_data`.
 
 ---
 
@@ -159,8 +158,8 @@ SUPERADMIN_NAME=Root
 # 1) Dependências
 npm i
 
-# 2) Banco (gerar/rodar migrações)
-npx prisma migrate dev
+# 2) Banco (criar/atualizar estrutura)
+npm run db:init
 
 # 3) (opcional) Seed do SUPERADMIN
 node scripts/seed-local.mjs
@@ -183,7 +182,7 @@ Login com o SUPERADMIN criado no seed.
 
 * **web**: Next.js em produção.
 * **worker**: job de sync GDMS (5 min) + renovação de token (1 h).
-* **Volume** `appdata` para o SQLite `:/data/app.sqlite`.
+* **mysql**: banco MySQL 8 com volume `mysql_data`.
 
 **Passos**
 
@@ -198,10 +197,10 @@ docker compose up -d
 docker compose logs -f
 ```
 
-**Migrations (primeira subida)**
+**Inicialização do banco (primeira subida)**
 
 ```bash
-docker compose exec web npx prisma migrate deploy
+docker compose exec web npm run db:init
 ```
 
 **Seed (opcional – se SEED_ON_BOOT=false)**
@@ -339,14 +338,11 @@ curl -i -X POST http://localhost:3000/api/integrations/gdms/sync
 # instalar deps
 npm ci
 
-# gerar prisma client
-npx prisma generate
-
 # build
 npm run build
 
-# migrações
-npx prisma migrate deploy
+# inicializar banco
+npm run db:init
 
 # start
 npm run start
@@ -356,47 +352,18 @@ npm run start
 
 ---
 
-$1
+## Troubleshooting
 
-**Coluna `User.isBlocked` ausente (erro P2022)**
-Se aparecer `PrismaClientKnownRequestError P2022: The column main.User.isBlocked does not exist`:
-
-**Local (dev):**
+**Estrutura do banco ausente ou desatualizada**
+Se aparecer erro de tabela ou coluna inexistente, reaplique o schema:
 
 ```bash
-npx prisma migrate dev --name add-user-isBlocked --schema=prisma/schema.prisma
+# local
+npm run db:init
+
+# docker
+docker compose exec web npm run db:init
 ```
-
-**Docker Compose (duas opções):**
-
-* **Recomendado (gerar no host e aplicar no container):**
-
-```bash
-# gerar migration no host (cria prisma/migrations/*)
-npx prisma migrate dev --name add-user-isBlocked --schema=prisma/schema.prisma
-
-# rebuildar imagem e subir
-docker compose build --no-cache
-docker compose up -d
-
-# aplicar no banco dentro do container
-docker compose exec web npx prisma migrate deploy
-```
-
-* **Alternativo (não persiste no repositório):**
-
-```bash
-docker compose exec web npx prisma migrate dev --name add-user-isBlocked --schema=prisma/schema.prisma
-```
-
-**Depois:**
-
-```bash
-# reexecutar seed se necessário
-docker compose exec web node ./scripts/seed-local.mjs
-```
-
-$2
 
 ```bash
 # status containers
@@ -406,8 +373,8 @@ docker compose ps
 docker compose logs -f web
 docker compose logs -f worker
 
-# prisma dentro do container
-docker compose exec web npx prisma studio
+# testar conexão com a app
+curl http://localhost:3000/api/health
 ```
 
 ---
@@ -421,4 +388,4 @@ Consulte **LICENSE**.
 ## 🙌 Créditos
 
 * **Esri World Imagery** (tiles) – atribuição incluída no mapa.
-* Ícones **FontAwesome**, **TailwindCSS**, **Zustand**, **Prisma**, **Recharts**.
+* Ícones **FontAwesome**, **TailwindCSS**, **Zustand**, **mysql2**, **Recharts**.

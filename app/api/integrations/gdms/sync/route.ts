@@ -1,10 +1,23 @@
+import type { RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { requireRequestAuthOrInternal } from "@lib/auth";
-import { prisma } from "@lib/prisma";
+import { dbExecute, dbQueryOne, withTransaction } from "@lib/mysql";
 import { listAPsByNetwork, listNetworks } from "@services/gdms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type ExistingAntennaRow = RowDataPacket & {
+  id: number;
+  status: string;
+  lat: number;
+  lon: number;
+};
+
+type SyncOutcome =
+  | { kind: "created" }
+  | { kind: "updated"; statusChanged: boolean }
+  | { kind: "skipped" };
 
 export async function POST(req: Request) {
   try {
@@ -30,70 +43,133 @@ export async function POST(req: Request) {
 
       for (const ap of aps) {
         try {
-          const existing = await prisma.antenna.findFirst({
-            where: { gdmsApId: ap.apId },
-            select: { id: true, status: true, lat: true, lon: true },
+          const outcome = await withTransaction<SyncOutcome>(async (connection) => {
+            const existing = await dbQueryOne<ExistingAntennaRow>(
+              "SELECT `id`, `status`, `lat`, `lon` FROM `Antenna` WHERE `gdmsApId` = ? LIMIT 1",
+              [ap.apId],
+              connection
+            );
+
+            if (statusOnly) {
+              if (!existing) return { kind: "skipped" };
+
+              const statusChangedNow = existing.status !== ap.status;
+              const assignments = ["`status` = ?", "`lastSyncAt` = ?", "`updatedAt` = ?"];
+              const values: Array<string | Date> = [ap.status, now, now];
+
+              if (statusChangedNow) {
+                assignments.push("`lastStatusChange` = ?");
+                values.push(now);
+              }
+
+              values.push(ap.apId);
+              await dbExecute(
+                `UPDATE \`Antenna\` SET ${assignments.join(", ")} WHERE \`gdmsApId\` = ?`,
+                values,
+                connection
+              );
+
+              if (statusChangedNow) {
+                await dbExecute(
+                  "INSERT INTO `StatusHistory` (`antennaId`, `status`, `changedAt`) VALUES (?, ?, ?)",
+                  [existing.id, ap.status, now],
+                  connection
+                );
+              }
+
+              return { kind: "updated", statusChanged: statusChangedNow };
+            }
+
+            if (!existing) {
+              const lat = typeof ap.lat === "number" ? ap.lat : 0;
+              const lon = typeof ap.lng === "number" ? ap.lng : 0;
+              const result = await dbExecute(
+                "INSERT INTO `Antenna` (`name`, `description`, `lat`, `lon`, `status`, `gdmsApId`, `networkId`, `networkName`, `lastSyncAt`, `createdAt`, `updatedAt`) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                  ap.apName,
+                  lat,
+                  lon,
+                  ap.status,
+                  ap.apId,
+                  ap.networkId,
+                  ap.networkName,
+                  now,
+                  now,
+                  now,
+                ],
+                connection
+              );
+
+              await dbExecute(
+                "INSERT INTO `StatusHistory` (`antennaId`, `status`, `changedAt`) VALUES (?, ?, ?)",
+                [result.insertId, ap.status, now],
+                connection
+              );
+
+              return { kind: "created" };
+            }
+
+            const statusChangedNow = existing.status !== ap.status;
+            const assignments = [
+              "`name` = ?",
+              "`networkId` = ?",
+              "`networkName` = ?",
+              "`status` = ?",
+              "`lastSyncAt` = ?",
+              "`updatedAt` = ?",
+            ];
+            const values: Array<string | number | Date> = [
+              ap.apName,
+              ap.networkId,
+              ap.networkName,
+              ap.status,
+              now,
+              now,
+            ];
+
+            if (statusChangedNow) {
+              assignments.push("`lastStatusChange` = ?");
+              values.push(now);
+            }
+
+            if (Number(existing.lat) === 0 && Number(existing.lon) === 0) {
+              if (typeof ap.lat === "number") {
+                assignments.push("`lat` = ?");
+                values.push(ap.lat);
+              }
+              if (typeof ap.lng === "number") {
+                assignments.push("`lon` = ?");
+                values.push(ap.lng);
+              }
+            }
+
+            values.push(existing.id);
+            await dbExecute(
+              `UPDATE \`Antenna\` SET ${assignments.join(", ")} WHERE \`id\` = ?`,
+              values,
+              connection
+            );
+
+            if (statusChangedNow) {
+              await dbExecute(
+                "INSERT INTO `StatusHistory` (`antennaId`, `status`, `changedAt`) VALUES (?, ?, ?)",
+                [existing.id, ap.status, now],
+                connection
+              );
+            }
+
+            return { kind: "updated", statusChanged: statusChangedNow };
           });
 
-          if (statusOnly) {
-            if (!existing) continue;
-            const statusChangedNow = existing.status !== ap.status;
-            await prisma.antenna.update({
-              where: { gdmsApId: ap.apId },
-              data: {
-                status: ap.status,
-                lastSyncAt: now,
-                ...(statusChangedNow ? { lastStatusChange: now } : {}),
-              },
-            });
-            updated++;
-            if (statusChangedNow) {
-              await prisma.statusHistory.create({ data: { antennaId: existing.id, status: ap.status } });
-              statusChanged++;
-            }
-            continue;
-          }
-
-          const base: any = {
-            name: ap.apName,
-            networkId: ap.networkId,
-            networkName: ap.networkName,
-            status: ap.status,
-            lastSyncAt: now,
-          };
-
-          if (existing && existing.lat === 0 && existing.lon === 0) {
-            if (typeof ap.lat === "number") base.lat = ap.lat;
-            if (typeof ap.lng === "number") base.lon = ap.lng;
-          }
-
-          if (!existing) {
-            const createdRow = await prisma.antenna.create({
-              data: {
-                gdmsApId: ap.apId,
-                ...base,
-                lat: typeof base.lat === "number" ? base.lat : 0,
-                lon: typeof base.lon === "number" ? base.lon : 0,
-              },
-            });
-            await prisma.statusHistory.create({ data: { antennaId: createdRow.id, status: ap.status } });
+          if (outcome.kind === "created") {
             created++;
             continue;
           }
 
-          const statusChangedNow = existing.status !== ap.status;
-          await prisma.antenna.update({
-            where: { gdmsApId: ap.apId },
-            data: {
-              ...base,
-              ...(statusChangedNow ? { lastStatusChange: now } : {}),
-            },
-          });
-          if (statusChangedNow) {
-            await prisma.statusHistory.create({ data: { antennaId: existing.id, status: ap.status } });
-            statusChanged++;
+          if (outcome.kind === "updated") {
+            updated++;
+            if (outcome.statusChanged) statusChanged++;
           }
-          updated++;
         } catch (rowErr: any) {
           errors.push({ apId: ap.apId, reason: rowErr?.message ?? String(rowErr) });
         }

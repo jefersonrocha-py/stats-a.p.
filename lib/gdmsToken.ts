@@ -1,35 +1,41 @@
-import { prisma } from "@lib/prisma";
+import type { RowDataPacket } from "mysql2/promise";
+import { dbExecute, dbQueryOne } from "@lib/mysql";
 
-// Memória local para reduzir IO, mas a verdade fica no DB
+// Memoria local para reduzir IO, mas a verdade fica no DB
 type TokenRecord = { accessToken: string; expiresAt: number };
 const mem = { token: null as TokenRecord | null };
 
-const SKEW_MS = 60_000; // renova com 1min de antecedência
+type TokenRow = RowDataPacket & {
+  accessToken: string;
+  expiresAt: Date | string;
+};
 
-function now() { return Date.now(); }
+const SKEW_MS = 60_000;
+
+function now() {
+  return Date.now();
+}
+
 function willExpireSoon(expiresAt: number, skewMs = SKEW_MS) {
-  return expiresAt <= (now() + skewMs);
+  return expiresAt <= now() + skewMs;
 }
 
 async function loadFromDb(): Promise<TokenRecord | null> {
-  const row = await prisma.gdmsToken.findUnique({ where: { id: 1 } }).catch(() => null);
+  const row = await dbQueryOne<TokenRow>(
+    "SELECT `accessToken`, `expiresAt` FROM `gdms_token` WHERE `id` = 1 LIMIT 1"
+  ).catch(() => null);
   if (!row) return null;
   return { accessToken: row.accessToken, expiresAt: new Date(row.expiresAt).getTime() };
 }
+
 async function saveToDb(tok: TokenRecord): Promise<void> {
-  await prisma.gdmsToken.upsert({
-    where: { id: 1 },
-    create: { id: 1, accessToken: tok.accessToken, expiresAt: new Date(tok.expiresAt) },
-    update: { accessToken: tok.accessToken, expiresAt: new Date(tok.expiresAt) },
-  });
-  mem.token = tok; // sincroniza cache
+  await dbExecute(
+    "INSERT INTO `gdms_token` (`id`, `accessToken`, `expiresAt`, `updatedAt`) VALUES (1, ?, ?, ?) ON DUPLICATE KEY UPDATE `accessToken` = VALUES(`accessToken`), `expiresAt` = VALUES(`expiresAt`), `updatedAt` = VALUES(`updatedAt`)",
+    [tok.accessToken, new Date(tok.expiresAt), new Date()]
+  );
+  mem.token = tok;
 }
 
-// === OAuth client_credentials ===
-// Equivalente ao seu curl:
-// curl -X POST "$GDMS_OAUTH_URL" \
-//   -H "Content-Type: application/x-www-form-urlencoded" \
-//   --data "grant_type=client_credentials&client_id=...&client_secret=..."
 async function fetchClientCredentialsToken(): Promise<TokenRecord> {
   const url = process.env.GDMS_OAUTH_URL!;
   const clientId = process.env.GDMS_CLIENT_ID!;
@@ -53,6 +59,7 @@ async function fetchClientCredentialsToken(): Promise<TokenRecord> {
     const t = await res.text();
     throw new Error(`OAuth token failed ${res.status}: ${t}`);
   }
+
   const json = await res.json();
   const accessToken = json?.access_token ?? json?.token;
   const ttlSec = json?.expires_in ?? 3600;
@@ -60,36 +67,31 @@ async function fetchClientCredentialsToken(): Promise<TokenRecord> {
   return { accessToken, expiresAt: now() + ttlSec * 1000 };
 }
 
-// Renova e persiste
 export async function refreshToken(): Promise<TokenRecord> {
   const rec = await fetchClientCredentialsToken();
   await saveToDb(rec);
   return rec;
 }
 
-// Exposta para quem precisa do token
 export async function getAccessToken(): Promise<string> {
-  // 1) memória ok?
-  if (mem.token && !willExpireSoon(mem.token.expiresAt)) return mem.token.accessToken;
+  if (mem.token && !willExpireSoon(mem.token.expiresAt)) {
+    return mem.token.accessToken;
+  }
 
-  // 2) DB
   const dbTok = await loadFromDb();
   if (dbTok && !willExpireSoon(dbTok.expiresAt)) {
     mem.token = dbTok;
     return dbTok.accessToken;
   }
 
-  // 3) renovar via OAuth e salvar
   const newTok = await refreshToken();
   return newTok.accessToken;
 }
 
-// Opcional: force refresh via endpoint/admin
 export async function forceRefresh() {
   return refreshToken();
 }
 
-// Para UI/monitorar (não expõe o token)
 export async function getTokenInfo() {
   const dbTok = await loadFromDb();
   const exp = dbTok?.expiresAt ?? 0;

@@ -1,12 +1,32 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import type { RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { requireRequestAuth } from "@lib/auth";
-import { mapPrismaError } from "@lib/prismaErrors";
-import { prisma } from "@lib/prisma";
+import { mapAntennaRow } from "@lib/dbMappers";
+import { mapDbError } from "@lib/dbErrors";
+import { dbExecute, dbQuery, dbQueryOne, withTransaction } from "@lib/mysql";
 import { emit } from "@lib/sse";
 import { antennaCreateSchema } from "@lib/validators";
+
+type AntennaRow = RowDataPacket & {
+  id: number;
+  name: string;
+  description: string | null;
+  lat: number;
+  lon: number;
+  status: string;
+  gdmsApId: string | null;
+  networkId: string | null;
+  networkName: string | null;
+  lastSyncAt: Date | string | null;
+  lastStatusChange: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+};
+
+type CountRow = RowDataPacket & { totalCount: number };
 
 export async function GET(req: Request) {
   try {
@@ -26,33 +46,44 @@ export async function GET(req: Request) {
       ? Math.min(Math.max(Math.floor(pageSizeParam), 1), 10000)
       : 5000;
 
-    const where: any = {};
-    if (status) where.status = status;
-    if (network) where.networkName = network;
+    const whereClauses: string[] = [];
+    const whereParams: Array<string | number> = [];
+
+    if (status) {
+      whereClauses.push("`status` = ?");
+      whereParams.push(status);
+    }
+    if (network) {
+      whereClauses.push("`networkName` = ?");
+      whereParams.push(network);
+    }
     if (q) {
-      where.OR = [
-        { name: { contains: q, mode: "insensitive" } },
-        { networkName: { contains: q, mode: "insensitive" } },
-      ];
+      whereClauses.push("(`name` LIKE ? OR `networkName` LIKE ?)");
+      const like = `%${q}%`;
+      whereParams.push(like, like);
     }
     if (unsaved === "1") {
-      where.lat = 0;
-      where.lon = 0;
+      whereClauses.push("`lat` = 0 AND `lon` = 0");
     }
     if (placed === "1") {
-      where.AND = [{ lat: { not: 0 } }, { lon: { not: 0 } }];
+      whereClauses.push("`lat` <> 0 AND `lon` <> 0");
     }
 
-    const totalCount = await prisma.antenna.count({ where });
+    const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    const countRow = await dbQueryOne<CountRow>(
+      `SELECT COUNT(*) AS totalCount FROM \`Antenna\` ${whereSql}`,
+      whereParams
+    );
+
+    const totalCount = Number(countRow?.totalCount ?? 0);
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
     const currentPage = Math.min(page, totalPages);
     const skip = (currentPage - 1) * pageSize;
-    const items = await prisma.antenna.findMany({
-      where,
-      orderBy: { id: "asc" },
-      skip,
-      take: pageSize,
-    });
+
+    const items = await dbQuery<AntennaRow>(
+      `SELECT * FROM \`Antenna\` ${whereSql} ORDER BY \`id\` ASC LIMIT ? OFFSET ?`,
+      [...whereParams, pageSize, skip]
+    );
 
     return NextResponse.json({
       ok: true,
@@ -61,7 +92,7 @@ export async function GET(req: Request) {
       page: currentPage,
       pageSize,
       totalPages,
-      items: items.map((item) => ({ ...item, updatedAt: item.updatedAt.toISOString() })),
+      items: items.map(mapAntennaRow),
     });
   } catch (e) {
     console.error("GET /api/antennas error:", e);
@@ -83,24 +114,46 @@ export async function POST(req: Request) {
       );
     }
 
-    const item = await prisma.antenna.create({
-      data: {
-        name: parsed.data.name.trim(),
-        lat: parsed.data.lat,
-        lon: parsed.data.lon,
-        description: parsed.data.description?.trim() || null,
-      },
+    const now = new Date();
+    const item = await withTransaction(async (connection) => {
+      const result = await dbExecute(
+        "INSERT INTO `Antenna` (`name`, `lat`, `lon`, `description`, `status`, `createdAt`, `updatedAt`) VALUES (?, ?, ?, ?, 'DOWN', ?, ?)",
+        [
+          parsed.data.name.trim(),
+          parsed.data.lat,
+          parsed.data.lon,
+          parsed.data.description?.trim() || null,
+          now,
+          now,
+        ],
+        connection
+      );
+
+      await dbExecute(
+        "INSERT INTO `StatusHistory` (`antennaId`, `status`, `changedAt`) VALUES (?, 'DOWN', ?)",
+        [result.insertId, now],
+        connection
+      );
+
+      const row = await dbQueryOne<AntennaRow>(
+        "SELECT * FROM `Antenna` WHERE `id` = ? LIMIT 1",
+        [result.insertId],
+        connection
+      );
+
+      if (!row) {
+        throw new Error("CREATED_ANTENNA_NOT_FOUND");
+      }
+
+      return row;
     });
 
-    await prisma.statusHistory.create({
-      data: { antennaId: item.id, status: item.status },
-    });
     emit("antenna.created", { id: item.id, status: item.status });
 
-    return NextResponse.json({ ok: true, item }, { status: 201 });
+    return NextResponse.json({ ok: true, item: mapAntennaRow(item) }, { status: 201 });
   } catch (e) {
     console.error("POST /api/antennas error:", e);
-    const mapped = mapPrismaError(e);
+    const mapped = mapDbError(e);
     return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }
