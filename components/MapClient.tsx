@@ -77,6 +77,8 @@ type Antenna = {
   updatedAt?: string | number | Date;
 };
 
+type Role = "SUPERADMIN" | "ADMIN" | "USER";
+
 // ===== Centro e limites de Mogi Mirim
 const CITY_CENTER: LatLngExpression = [-22.431, -46.955];
 const CITY_BOUNDS_ARR: LatLngBoundsExpression = [
@@ -154,6 +156,7 @@ export default function MapClient() {
   const [antennas, setAntennas] = useState<Antenna[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
 
   // filtros
   const [q, setQ] = useState("");
@@ -171,6 +174,7 @@ export default function MapClient() {
   const [desc, setDesc] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const canManage = role === "ADMIN" || role === "SUPERADMIN";
 
   // mapa base
   const [basemap, setBasemap] = useState<BasemapKey>("sat");
@@ -242,6 +246,26 @@ export default function MapClient() {
       disconnect?.();
     };
   }, [load]);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const response = await fetch("/api/me", { cache: "no-store" });
+        const json = await response.json();
+        if (!alive) return;
+        if (json?.ok && json?.user?.role) setRole(json.user.role as Role);
+        else setRole(null);
+      } catch {
+        if (alive) setRole(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const iconUp = useMemo(() => makeLeafletIcon("#22c55e", 1.4), []);
   const iconDown = useMemo(() => makeLeafletIcon("#ef4444", 1.4), []);
@@ -330,11 +354,12 @@ export default function MapClient() {
           lon: lonNum,
           description: desc.trim() || undefined,
         };
-        const created = await api<Antenna>("/api/antennas", {
+        const created = await api<any>("/api/antennas", {
           method: "POST",
           body: JSON.stringify(body),
         });
-        setAntennas((prev) => (created && (created as any).id ? [created, ...prev] : prev));
+        const createdItem = created?.item ?? created;
+        setAntennas((prev) => (createdItem && createdItem.id ? [createdItem, ...prev] : prev));
         setName("");
         setLat("");
         setLon("");
@@ -579,19 +604,21 @@ export default function MapClient() {
       </MapContainer>
 
       {/* FAB: Adicionar */}
-      <div className="pointer-events-none absolute bottom-6 left-6 z-[1003]">
-        <button
-          onClick={() => setOpenModal(true)}
-          className="pointer-events-auto inline-flex items-center gap-2 px-4 h-11 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-600/30 transition"
-          title="Adicionar nova antena"
-        >
-          <FontAwesomeIcon icon={faPlus} className="h-4 w-4" />
-          <span className="font-medium">Adicionar</span>
-        </button>
-      </div>
+      {canManage && (
+        <div className="pointer-events-none absolute bottom-6 left-6 z-[1003]">
+          <button
+            onClick={() => setOpenModal(true)}
+            className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-white shadow-lg shadow-emerald-600/30 transition hover:bg-emerald-500"
+            title="Adicionar nova antena"
+          >
+            <FontAwesomeIcon icon={faPlus} className="h-4 w-4" />
+            <span className="font-medium">Adicionar</span>
+          </button>
+        </div>
+      )}
 
       {/* Modal Nova Antena */}
-      {openModal && (
+      {canManage && openModal && (
         <div
           className="absolute inset-0 z-[1006] grid place-items-center bg-black/50 backdrop-blur-sm p-4"
           role="dialog"

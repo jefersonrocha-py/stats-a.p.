@@ -1,43 +1,29 @@
-// prisma/schema.prisma
-
 generator client {
   provider      = "prisma-client-js"
-  // Alvo para imagens Debian/Ubuntu com OpenSSL 3 (node:XX-bookworm[-slim])
-  // Se você usar Alpine, troque por: ["native", "linux-musl-openssl-3.0.x"]
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 model Antenna {
-  id               Int       @id @default(autoincrement())
+  id               Int             @id @default(autoincrement())
   name             String
   description      String?
-
-  // Coordenadas usadas no Mapa (o usuário edita em Settings)
-  lat              Float     @default(0)
-  lon              Float     @default(0)
-
-  // Status lógico consumido pelo Dashboard/Donut
-  status           String    @default("DOWN") // "UP" | "DOWN"
-
-  // --- Campos de integração GDMS ---
-  gdmsApId         String?   @unique          // ID do AP no GDMS (quando houver)
-  networkId        String?                     // ID da Network no GDMS
-  networkName      String?                     // Nome da Network (para exibição/filtro)
-  lastSyncAt       DateTime?                   // última sincronização bem-sucedida
-  lastStatusChange DateTime?                   // atalho (opcional) além do histórico
-
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  // Histórico de mudanças de status
+  lat              Float           @default(0)
+  lon              Float           @default(0)
+  status           String          @default("DOWN")
+  gdmsApId         String?         @unique
+  networkId        String?
+  networkName      String?
+  lastSyncAt       DateTime?
+  lastStatusChange DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
   statusHistory    StatusHistory[]
 
-  // Índices úteis
   @@index([status])
   @@index([lat, lon])
   @@index([gdmsApId])
@@ -47,9 +33,8 @@ model Antenna {
 model StatusHistory {
   id        Int      @id @default(autoincrement())
   antennaId Int
-  status    String   // "UP" | "DOWN"
+  status    String
   changedAt DateTime @default(now())
-
   antenna   Antenna  @relation(fields: [antennaId], references: [id], onDelete: Cascade)
 
   @@index([antennaId, changedAt])
@@ -60,16 +45,16 @@ model User {
   name         String
   email        String   @unique
   passwordHash String
-  role         String   @default("USER") // "SUPERADMIN" | "ADMIN" | "USER"
-  isBlocked    Boolean  @default(false)  // ✅ faltava essa coluna
+  role         String   @default("USER")
+  isBlocked    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   @@index([role])
 }
 
 model GdmsToken {
-  id          Int      @id @default(1)  // sempre 1
-  accessToken String
+  id          Int      @id
+  accessToken String   @db.Text
   expiresAt   DateTime
   updatedAt   DateTime @updatedAt
 

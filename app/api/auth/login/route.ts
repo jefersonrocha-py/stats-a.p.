@@ -1,19 +1,22 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import {
+  AUTH_COOKIE_NAME,
+  getJwtExpiresDays,
+  shouldUseSecureCookies,
+  signAuthToken,
+  type UserRole,
+} from "@lib/auth";
 import { prisma } from "@lib/prisma";
 import { loginSchema } from "@lib/validatorsAuth";
-import { signAuthToken } from "@lib/auth";
-import bcrypt from "bcryptjs";
-
-// union compatível com o que você usa no app
-type RolePayload = "SUPERADMIN" | "ADMIN" | "USER";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
+    const body = await req.json().catch(() => ({}));
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -32,7 +35,7 @@ export async function POST(req: Request) {
         name: true,
         role: true,
         passwordHash: true,
-        // isBlocked: true, // deixe comentado se o client do Prisma no Docker ainda não tipa
+        isBlocked: true,
       },
     });
 
@@ -40,37 +43,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
-    const isBlocked = (user as any)?.isBlocked === true;
-    if (isBlocked) {
+    if (user.isBlocked) {
       return NextResponse.json({ ok: false, error: "USER_BLOCKED" }, { status: 403 });
     }
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) {
+    const passwordOk = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordOk) {
       return NextResponse.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
-    // normaliza role para o union esperado
-    const rawRole = (user as any).role as string | undefined;
-    const role: RolePayload =
+    const rawRole = user.role as string | undefined;
+    const role: UserRole =
       rawRole === "SUPERADMIN" || rawRole === "ADMIN" || rawRole === "USER" ? rawRole : "USER";
 
-    // 👇 inclui name para satisfazer o JwtPayload exigido pelo signAuthToken
     const token = await signAuthToken({
       sub: String(user.id),
       email: user.email,
-      name: user.name ?? "",      // <— adicionado
+      name: user.name ?? "",
       role,
     });
 
     cookies().set({
-      name: "auth",
+      name: AUTH_COOKIE_NAME,
       value: token,
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: shouldUseSecureCookies(),
       path: "/",
-      maxAge: 60 * 60 * 24 * Number(process.env.JWT_EXPIRES_DAYS ?? 7),
+      maxAge: 60 * 60 * 24 * getJwtExpiresDays(),
     });
 
     return NextResponse.json({

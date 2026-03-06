@@ -46,7 +46,7 @@ html, body, #__next { height: 100%; }
 
 /* Forms reset */
 input, select, textarea {
-  @apply rounded-md bg-white/70 dark:bg-white/5 border-black/10 dark:border-white/10;
+  @apply rounded-md border bg-white/70 dark:bg-white/5 border-black/10 dark:border-white/10;
   color: inherit;
 }
 

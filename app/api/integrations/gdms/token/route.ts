@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
+import { requireRequestAuthOrInternal } from "@lib/auth";
 import { forceRefresh, getTokenInfo } from "@lib/gdmsToken";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/integrations/gdms/token  -> status (sem mostrar token)
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const auth = await requireRequestAuthOrInternal(req, ["ADMIN", "SUPERADMIN"]);
+    if ("response" in auth) return auth.response;
+
     const info = await getTokenInfo();
     return NextResponse.json({ ok: true, ...info });
   } catch (e: any) {
@@ -14,9 +17,11 @@ export async function GET() {
   }
 }
 
-// POST /api/integrations/gdms/token -> força refresh via OAuth
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    const auth = await requireRequestAuthOrInternal(req, ["ADMIN", "SUPERADMIN"]);
+    if ("response" in auth) return auth.response;
+
     const rec = await forceRefresh();
     return NextResponse.json({ ok: true, expiresAt: rec.expiresAt });
   } catch (e: any) {

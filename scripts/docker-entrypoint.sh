@@ -1,14 +1,13 @@
 #!/bin/sh
-set -e
+set -eu
 
-echo "▶️  DATABASE_URL=$DATABASE_URL"
-npx prisma migrate deploy || npx prisma db push
+echo "Applying database schema..."
+npx prisma db push --skip-generate
 
-# 🔐 seed de superadmin (se variáveis existirem)
-if [ -n "$SUPERADMIN_EMAIL" ] && [ -n "$SUPERADMIN_PASSWORD" ]; then
-  echo "🔐 seeding superadmin..."
-  node scripts/seed-superadmin.mjs || true
+if [ -n "${SUPERADMIN_EMAIL:-}" ] && [ -n "${SUPERADMIN_PASSWORD:-}" ]; then
+  echo "Ensuring superadmin user exists..."
+  node scripts/seed-superadmin.mjs
 fi
 
-echo "🚀 starting Next.js on port ${PORT:-3000}"
-npm run start -- -p ${PORT:-3000}
+echo "Starting Next.js on ${HOST:-0.0.0.0}:${PORT:-3000}"
+exec npm run start -- -H "${HOST:-0.0.0.0}" -p "${PORT:-3000}"

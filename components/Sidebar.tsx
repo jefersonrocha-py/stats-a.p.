@@ -1,29 +1,26 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useUIStore } from "@store/ui";
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faMap,
   faChartPie,
   faGear,
+  faMap,
   faShieldHalved,
 } from "@fortawesome/free-solid-svg-icons";
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { UrlObject } from "url";
+import { useUIStore } from "@store/ui";
 
-// ==== Tipos ====
 type Role = "SUPERADMIN" | "ADMIN" | "USER";
 type MeResp =
   | { ok: true; user: { id: string | number; name: string; email: string; role: Role } }
   | { ok: false; error: string };
 
-// href SEMPRE como UrlObject para agradar typedRoutes
 type NavLink = {
-  /** string para cálculo de ativo */
   path: string;
-  /** href para <Link> */
   href: UrlObject;
   icon: any;
   label: string;
@@ -45,13 +42,12 @@ function NavItem({ href, icon, label, open, active, onClick }: ItemProps) {
       title={label}
       onClick={onClick}
       prefetch={false}
-      className={`group flex items-center gap-3 px-3 py-2 rounded-lg
-        hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400
-        ${active ? "bg-white/10" : ""}
-      `}
+      className={`group flex items-center gap-3 rounded-lg px-3 py-2 ${
+        active ? "bg-white/10" : ""
+      } hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400`}
       aria-current={active ? "page" : undefined}
     >
-      <FontAwesomeIcon className="w-4 h-4 shrink-0" icon={icon} />
+      <FontAwesomeIcon className="h-4 w-4 shrink-0" icon={icon} />
       {open ? <span className="text-sm">{label}</span> : <span className="sr-only">{label}</span>}
     </Link>
   );
@@ -78,45 +74,27 @@ function Hamburger({
       aria-controls="app-sidebar"
       aria-pressed={open}
       title={title || "Menu"}
-      className={`
-        relative inline-flex h-10 w-10 items-center justify-center rounded-xl
-        bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20
-        focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400
-        transition-[background,transform] duration-200 active:scale-[0.98]
-      `}
+      className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl bg-black/5 transition-[background,transform] duration-200 active:scale-[0.98] hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 dark:bg-white/10 dark:hover:bg-white/20"
     >
-      {/* brilho sutil quando aberto */}
       <span
         aria-hidden
         className={`absolute inset-0 rounded-xl transition-shadow duration-300 ${
           open ? "shadow-[0_0_0_8px_rgba(16,185,129,.10)]" : "shadow-none"
         }`}
       />
-
-      {/* barra superior */}
       <span
         className={`${barBase} ${open ? "translate-y-0 rotate-45" : "-translate-y-1.5 rotate-0"}`}
         style={{ transformOrigin: "center" }}
       />
-
-      {/* barra do meio */}
       <span
         className={`${barBase} transition-opacity ${
-          open ? "opacity-0 scale-x-0" : "opacity-100 scale-x-100"
+          open ? "scale-x-0 opacity-0" : "scale-x-100 opacity-100"
         }`}
         style={{ transformOrigin: "center" }}
       />
-
-      {/* barra inferior */}
       <span
         className={`${barBase} ${open ? "translate-y-0 -rotate-45" : "translate-y-1.5 rotate-0"}`}
         style={{ transformOrigin: "center" }}
-      />
-
-      {/* glow leve ao passar o mouse */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute h-10 w-10 rounded-xl ring-0 hover:ring-1 hover:ring-white/10 transition"
       />
     </button>
   );
@@ -126,83 +104,81 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
   const [role, setRole] = useState<Role | null>(null);
+  const canManage = role === "ADMIN" || role === "SUPERADMIN";
 
-  // ESC fecha off-canvas (mobile)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarOpen(false);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
     };
+
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [setSidebarOpen]);
 
-  // Descobrir role via /api/me
   useEffect(() => {
     let alive = true;
+
     (async () => {
       try {
-        const r = await fetch("/api/me", { cache: "no-store" });
-        const j: MeResp = await r.json();
+        const response = await fetch("/api/me", { cache: "no-store" });
+        const json: MeResp = await response.json();
         if (!alive) return;
-        if ("ok" in j && j.ok) setRole(j.user.role);
+        if ("ok" in json && json.ok) setRole(json.user.role);
         else setRole(null);
       } catch {
         if (alive) setRole(null);
       }
     })();
+
     return () => {
       alive = false;
     };
   }, []);
 
-  // Lista de links (sempre UrlObject)
   const links: NavLink[] = [
-    { path: "/",          href: { pathname: "/" },          icon: faMap,      label: "Mapa" },
+    { path: "/", href: { pathname: "/" }, icon: faMap, label: "Mapa" },
     { path: "/dashboard", href: { pathname: "/dashboard" }, icon: faChartPie, label: "Dashboard" },
-    { path: "/settings",  href: { pathname: "/settings" },  icon: faGear,     label: "Configurações" },
+    ...(canManage
+      ? [{ path: "/settings", href: { pathname: "/settings" }, icon: faGear, label: "Configuracoes" }]
+      : []),
   ];
 
-  const isActive = (path: string) =>
-    path === "/" ? pathname === "/" : pathname.startsWith(path);
+  const isActive = (path: string) => (path === "/" ? pathname === "/" : pathname.startsWith(path));
 
   return (
     <>
-      {/* Backdrop mobile */}
       <div
         onClick={() => setSidebarOpen(false)}
-        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] md:hidden transition-opacity
-          ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
-        `}
+        className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] transition-opacity md:hidden ${
+          sidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        }`}
         aria-hidden={!sidebarOpen}
       />
 
-      {/* DESKTOP */}
       <aside
         id="app-sidebar"
-        className={`
-          fixed left-0 top-0 z-50 h-screen text-white
-          transition-all duration-300 ease-out
-          hidden md:flex flex-col
-          ${sidebarOpen ? "md:w-64" : "md:w-16"}
-        `}
+        className={`fixed left-0 top-0 z-50 hidden h-screen flex-col text-white transition-all duration-300 ease-out md:flex ${
+          sidebarOpen ? "md:w-64" : "md:w-16"
+        }`}
         style={{
           background:
             "linear-gradient(180deg, rgba(41,107,104,1) 0%, rgba(58,60,57,1) 45%, rgba(8,255,184,0.35) 100%)",
         }}
       >
-        {/* Cabeçalho com hambúrguer (desktop) */}
-        <div className="p-3 flex items-center gap-2 border-b border-white/10 min-h-[56px]">
+        <div className="flex min-h-[56px] items-center gap-2 border-b border-white/10 p-3">
           <Hamburger
             open={sidebarOpen}
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            title="Expandir/Retrair"
+            title="Expandir ou recolher"
           />
           {sidebarOpen ? (
             <>
-              <img
+              <Image
                 src="https://etheriumtech.com.br/wp-content/uploads/2024/04/LOGO-BRANCO.png"
                 alt="Etheriumtech"
-                className="h-6"
+                width={160}
+                height={40}
+                className="h-6 w-auto"
               />
               <span className="ml-auto text-xs opacity-80">v1.0.0</span>
             </>
@@ -211,28 +187,24 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* Navegação principal */}
-        <nav className="p-2 space-y-1 overflow-y-auto">
-          {links.map((l) => (
+        <nav className="space-y-1 overflow-y-auto p-2">
+          {links.map((link) => (
             <NavItem
-              key={l.path}
-              href={l.href}
-              icon={l.icon}
-              label={l.label}
+              key={link.path}
+              href={link.href}
+              icon={link.icon}
+              label={link.label}
               open={sidebarOpen}
-              active={isActive(l.path)}
+              active={isActive(link.path)}
             />
           ))}
 
-          {/* Seção Administrador (somente SUPERADMIN) */}
           {role === "SUPERADMIN" && (
             <>
               {sidebarOpen ? (
-                <div className="px-3 mt-4 text-xs uppercase tracking-wide opacity-70">
-                  Administrador
-                </div>
+                <div className="mt-4 px-3 text-xs uppercase tracking-wide opacity-70">Administrador</div>
               ) : (
-                <div className="px-1 mt-4" />
+                <div className="mt-4 px-1" />
               )}
               <NavItem
                 href={{ pathname: "/admin" }}
@@ -246,53 +218,52 @@ export default function Sidebar() {
         </nav>
       </aside>
 
-      {/* MOBILE (off-canvas) */}
       <aside
-        className={`
-          fixed left-0 top-0 z-50 h-screen w-72 text-white
-          flex flex-col md:hidden transition-transform duration-300
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        `}
+        className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col text-white transition-transform duration-300 md:hidden ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
         style={{
           background:
             "linear-gradient(180deg, rgba(41,107,104,1) 0%, rgba(58,60,57,1) 45%, rgba(8,255,184,0.35) 100%)",
         }}
         aria-hidden={!sidebarOpen}
       >
-        <div className="p-3 flex items-center gap-2 border-b border-white/10 min-h-[56px]">
+        <div className="flex min-h-[56px] items-center gap-2 border-b border-white/10 p-3">
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
             aria-label="Fechar menu"
-            className="h-9 w-9 grid place-items-center rounded-lg bg-black/5 hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="grid h-9 w-9 place-items-center rounded-lg bg-black/5 hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             title="Fechar menu"
           >
-            <span className="relative block h-[2px] w-5 bg-current rotate-45 after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
+            <span className="relative block h-[2px] w-5 rotate-45 bg-current after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
           </button>
-          <img
+          <Image
             src="https://etheriumtech.com.br/wp-content/uploads/2024/04/LOGO-BRANCO.png"
             alt="Etheriumtech"
-            className="h-6 ml-1"
+            width={160}
+            height={40}
+            className="ml-1 h-6 w-auto"
           />
           <span className="ml-auto text-xs opacity-80">v1.0.0</span>
         </div>
 
-        <nav className="p-2 space-y-1 overflow-y-auto">
-          {links.map((l) => (
+        <nav className="space-y-1 overflow-y-auto p-2">
+          {links.map((link) => (
             <NavItem
-              key={`m-${l.path}`}
-              href={l.href}
-              icon={l.icon}
-              label={l.label}
+              key={`m-${link.path}`}
+              href={link.href}
+              icon={link.icon}
+              label={link.label}
               open={true}
-              active={isActive(l.path)}
+              active={isActive(link.path)}
               onClick={() => setSidebarOpen(false)}
             />
           ))}
 
           {role === "SUPERADMIN" && (
             <>
-              <div className="px-3 mt-4 text-xs uppercase tracking-wide opacity-70">Administrador</div>
+              <div className="mt-4 px-3 text-xs uppercase tracking-wide opacity-70">Administrador</div>
               <NavItem
                 href={{ pathname: "/admin" }}
                 icon={faShieldHalved}
@@ -306,10 +277,9 @@ export default function Sidebar() {
         </nav>
       </aside>
 
-      {/* Empurrador do conteúdo no desktop */}
       <div
         aria-hidden
-        className={`hidden md:block transition-[width] duration-300 ${sidebarOpen ? "w-64" : "w-16"}`}
+        className={`hidden transition-[width] duration-300 md:block ${sidebarOpen ? "w-64" : "w-16"}`}
       />
     </>
   );

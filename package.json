@@ -5,10 +5,10 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "prisma generate && next build",
-    "start": "next start -p ${PORT:-8080}",
+    "start": "next start",
     "lint": "eslint .",
-    "prisma:migrate": "prisma migrate deploy || prisma migrate dev",
-    "db:seed": "node -e \"console.log('No seed yet')\"",
+    "prisma:migrate": "prisma db push",
+    "db:seed": "node scripts/seed-superadmin.mjs",
     "test": "vitest",
     "test:e2e": "playwright test"
   },

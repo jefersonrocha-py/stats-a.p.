@@ -1,15 +1,17 @@
-// app/api/stats/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
+import { requireRequestAuth } from "@lib/auth";
 import { prisma } from "@lib/prisma";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    // conte os status (ajuste para o seu schema se for diferente)
+    const auth = await requireRequestAuth(req);
+    if ("response" in auth) return auth.response;
+
     const [total, up, down] = await prisma.$transaction([
       prisma.antenna.count(),
       prisma.antenna.count({ where: { status: "UP" } }),

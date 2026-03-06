@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { api } from "@services/api";
@@ -76,9 +77,11 @@ export default function LoginPage() {
                 Stats A.P.
               </h1>
             </div>
-            <img
+            <Image
               src="https://etheriumtech.com.br/wp-content/uploads/2024/04/LOGO-BRANCO.png"
               alt="Etheriumtech"
+              width={180}
+              height={48}
               className="h-8 w-auto drop-shadow"
             />
           </div>
@@ -139,13 +142,7 @@ export default function LoginPage() {
             </button>
 
             <div className="text-center text-xs opacity-80">
-              Esqueceu a senha?{" "}
-              <a
-                href="/forgot-password"
-                className="underline decoration-emerald-400/70 hover:decoration-emerald-400"
-              >
-                Clique aqui
-              </a>
+              Solicite o acesso ou a redefinicao de senha com um administrador.
             </div>
           </form>
         </div>
