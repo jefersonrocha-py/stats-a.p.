@@ -62,8 +62,18 @@ export type NormalizedAp = {
   apId: string;
   apName: string;
   status: "UP" | "DOWN";
+  clients: number;
   lat?: number;
   lng?: number;
+};
+
+export type NetworkClientStat = {
+  networkId: string;
+  networkName: string;
+  aps: number;
+  onlineAps: number;
+  offlineAps: number;
+  clients: number;
 };
 
 function pickApId(ap: any): string | undefined {
@@ -96,11 +106,52 @@ function pickLng(ap: any): number | undefined {
   );
 }
 
+function pickClients(ap: any): number {
+  const raw =
+    ap.clients ??
+    ap.clientCount ??
+    ap.clientsCount ??
+    ap.clientNum ??
+    ap.stationCount ??
+    ap.stationNum ??
+    ap.stations ??
+    ap.users ??
+    0;
+
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
 function shouldContinue(pageNum: number, pageSize: number, info: { totalPage?: number; total?: number; received?: number }) {
   const { totalPage, total, received } = info;
   if (typeof totalPage === "number" && totalPage > 0) return pageNum < totalPage;
   if (typeof total === "number" && total > 0) return (pageNum * pageSize) < total;
   return (received ?? 0) === pageSize;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  if (!items.length) return [];
+
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const currentIndex = nextIndex++;
+      if (currentIndex >= items.length) return;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, () => worker())
+  );
+
+  return results;
 }
 
 export async function listNetworks(): Promise<Array<{ id: string; networkName: string }>> {
@@ -155,6 +206,7 @@ export async function listAPsByNetwork(nid: string, networkName: string): Promis
         apId,
         apName: ap.name ?? `AP-${apId}`,
         status: (ap.status ?? 0) === 1 ? "UP" : "DOWN",
+        clients: pickClients(ap),
         lat: pickLat(ap),
         lng: pickLng(ap),
       });
@@ -182,4 +234,27 @@ export async function listAllAps(): Promise<NormalizedAp[]> {
     if (!seen.has(ap.apId)) { seen.add(ap.apId); dedup.push(ap); }
   }
   return dedup;
+}
+
+export async function listConnectedClientsByNetwork(): Promise<NetworkClientStat[]> {
+  const networks = await listNetworks();
+  const stats = await mapWithConcurrency(networks, 4, async (network) => {
+    const aps = await listAPsByNetwork(network.id, network.networkName ?? "");
+    const clients = aps.reduce((sum, ap) => sum + ap.clients, 0);
+    const onlineAps = aps.reduce((sum, ap) => sum + (ap.status === "UP" ? 1 : 0), 0);
+
+    return {
+      networkId: network.id,
+      networkName: network.networkName ?? "",
+      aps: aps.length,
+      onlineAps,
+      offlineAps: Math.max(0, aps.length - onlineAps),
+      clients,
+    };
+  });
+
+  return stats.sort((a, b) => {
+    if (b.clients !== a.clients) return b.clients - a.clients;
+    return (a.networkName || a.networkId).localeCompare(b.networkName || b.networkId, "pt-BR");
+  });
 }

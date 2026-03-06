@@ -36,6 +36,23 @@ export interface Stats {
   byModel?: Record<string, number>;
 }
 
+export interface NetworkClientStat {
+  networkId: string;
+  networkName: string;
+  aps: number;
+  onlineAps: number;
+  offlineAps: number;
+  clients: number;
+}
+
+export interface NetworkClientStatsResponse {
+  ok: boolean;
+  totalNetworks: number;
+  totalClients: number;
+  generatedAt: string;
+  items: NetworkClientStat[];
+}
+
 export interface AntennaListResponse {
   ok: boolean;
   items: Antenna[];

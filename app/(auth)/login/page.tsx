@@ -9,6 +9,13 @@ import { faLock, faTowerBroadcast, faUser } from "@fortawesome/free-solid-svg-ic
 import AuthParticles from "@components/AuthParticles";
 import { api } from "@services/api";
 
+const ETHERIUM_LOGO = {
+  src: "/logo_etherium.png",
+  alt: "Etheriumtech",
+  width: 346,
+  height: 369,
+} as const;
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -66,14 +73,16 @@ export default function LoginPage() {
       >
         <div className="relative bg-gradient-to-b from-emerald-300/90 via-emerald-400/80 to-emerald-500/60 px-6 py-7 backdrop-blur sm:px-10">
           <div className="flex flex-col items-center gap-4 text-center">
-            <Image
-              src="/logo_etherium.png"
-              alt="Etheriumtech"
-              width={300}
-              height={82}
-              className="h-14 w-auto"
-              priority
-            />
+            <div className="rounded-[28px] border border-black/10 bg-white/92 px-4 py-3 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.45)] backdrop-blur">
+              <Image
+                src={ETHERIUM_LOGO.src}
+                alt={ETHERIUM_LOGO.alt}
+                width={ETHERIUM_LOGO.width}
+                height={ETHERIUM_LOGO.height}
+                className="h-16 w-auto sm:h-20"
+                priority
+              />
+            </div>
             <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-black/10 px-3 py-1.5 text-sm font-medium text-black/75">
               <FontAwesomeIcon icon={faTowerBroadcast} className="h-4 w-4" />
               Monitoramento de APs

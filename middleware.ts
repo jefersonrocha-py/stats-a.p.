@@ -3,11 +3,13 @@ import type { NextRequest } from "next/server";
 import { verifyAuthToken } from "@lib/auth";
 
 const PUBLIC_PATHS = ["/login"];
+const PUBLIC_FILE = /\.[^/]+$/;
 
 function isPublic(pathname: string) {
   if (pathname.startsWith("/_next")) return true;
   if (pathname === "/favicon.ico") return true;
   if (pathname.startsWith("/api")) return true;
+  if (PUBLIC_FILE.test(pathname)) return true;
   return PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 }
 
@@ -52,5 +54,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|favicon.ico|assets).*)"],
+  matcher: ["/((?!api|_next|favicon.ico|.*\\..*).*)"],
 };

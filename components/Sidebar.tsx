@@ -9,6 +9,7 @@ import {
   faLocationDot,
   faMap,
   faShieldHalved,
+  faUsers,
 } from "@fortawesome/free-solid-svg-icons";
 import Image from "next/image";
 import Link from "next/link";
@@ -16,6 +17,13 @@ import { usePathname } from "next/navigation";
 import type { UrlObject } from "url";
 import { useUIStore } from "@store/ui";
 import { connectSSE } from "@services/sseClient";
+
+const ETHERIUM_LOGO = {
+  src: "/logo_etherium.png",
+  alt: "Etheriumtech",
+  width: 346,
+  height: 369,
+} as const;
 
 type Role = "SUPERADMIN" | "ADMIN" | "USER";
 type MeResponse =
@@ -225,6 +233,7 @@ function SidebarContent({
   const links: NavLink[] = [
     { path: "/", href: { pathname: "/" }, icon: faMap, label: "Mapa" },
     { path: "/dashboard", href: { pathname: "/dashboard" }, icon: faChartPie, label: "Dashboard" },
+    { path: "/clients", href: { pathname: "/clients" }, icon: faUsers, label: "Clientes" },
     {
       path: "/filter-cluster",
       href: { pathname: "/filter-cluster" },
@@ -261,27 +270,31 @@ function SidebarContent({
 
         {open ? (
           <>
-            <Image
-              src="/logo_etherium.png"
-              alt="Etheriumtech"
-              width={220}
-              height={56}
-              className="h-7 w-auto brightness-0 invert"
-              priority
-            />
+            <div className="rounded-2xl border border-black/10 bg-white/95 px-3 py-2 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.7)]">
+              <Image
+                src={ETHERIUM_LOGO.src}
+                alt={ETHERIUM_LOGO.alt}
+                width={ETHERIUM_LOGO.width}
+                height={ETHERIUM_LOGO.height}
+                className="h-10 w-auto"
+                priority
+              />
+            </div>
             <span className="ml-auto rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/65">
               v1.0.0
             </span>
           </>
         ) : (
-          <Image
-            src="/logo_etherium.png"
-            alt="Etheriumtech"
-            width={40}
-            height={40}
-            className="h-8 w-8 object-contain object-left brightness-0 invert"
-            priority
-          />
+          <div className="grid h-11 w-11 place-items-center rounded-2xl border border-black/10 bg-white/95 p-2 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.7)]">
+            <Image
+              src={ETHERIUM_LOGO.src}
+              alt={ETHERIUM_LOGO.alt}
+              width={ETHERIUM_LOGO.width}
+              height={ETHERIUM_LOGO.height}
+              className="h-full w-auto max-w-full object-contain"
+              priority
+            />
+          </div>
         )}
       </div>
 

@@ -11,13 +11,17 @@ export default function DashboardPage() {
   const [chartVariant, setChartVariant] = useState<"donut" | "gauge" | "radial">("donut");
   const [showLegend, setShowLegend] = useState(true);
 
-  async function loadStats() {
-    const response = await api<Stats>("/api/stats");
-    setStats(response || null);
-  }
-
   useEffect(() => {
+    let active = true;
+
+    async function loadStats() {
+      const statsResult = await api<Stats>("/api/stats").catch(() => null);
+      if (!active) return;
+      setStats(statsResult || null);
+    }
+
     loadStats();
+    const refreshTimer = window.setInterval(loadStats, 60_000);
 
     const disconnect = connectSSE((event) => {
       try {
@@ -32,7 +36,11 @@ export default function DashboardPage() {
       } catch {}
     });
 
-    return disconnect;
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+      disconnect();
+    };
   }, []);
 
   const cardsData = useMemo(() => {
