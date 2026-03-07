@@ -41,25 +41,27 @@ function createMysqlPool() {
   });
 }
 
-export const pool = globalForMysql.mysqlPool ?? createMysqlPool();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForMysql.mysqlPool = pool;
+function getPool() {
+  if (!globalForMysql.mysqlPool) {
+    globalForMysql.mysqlPool = createMysqlPool();
+  }
+  return globalForMysql.mysqlPool;
 }
 
 export async function dbQuery<T extends RowDataPacket>(
   sql: string,
   params: QueryParam[] = [],
-  client: Queryable = pool
+  client?: Queryable
 ): Promise<T[]> {
-  const [rows] = await client.execute<T[]>(sql, params);
+  const executor = client ?? getPool();
+  const [rows] = await executor.execute<T[]>(sql, params);
   return rows;
 }
 
 export async function dbQueryOne<T extends RowDataPacket>(
   sql: string,
   params: QueryParam[] = [],
-  client: Queryable = pool
+  client?: Queryable
 ): Promise<T | null> {
   const rows = await dbQuery<T>(sql, params, client);
   return rows[0] ?? null;
@@ -68,14 +70,15 @@ export async function dbQueryOne<T extends RowDataPacket>(
 export async function dbExecute(
   sql: string,
   params: QueryParam[] = [],
-  client: Queryable = pool
+  client?: Queryable
 ): Promise<ResultSetHeader> {
-  const [result] = await client.execute<ResultSetHeader>(sql, params);
+  const executor = client ?? getPool();
+  const [result] = await executor.execute<ResultSetHeader>(sql, params);
   return result;
 }
 
 export async function withTransaction<T>(callback: (connection: PoolConnection) => Promise<T>) {
-  const connection = await pool.getConnection();
+  const connection = await getPool().getConnection();
   try {
     await connection.beginTransaction();
     const result = await callback(connection);
