@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
-    if (user.isBlocked === true || user.isBlocked === 1 || user.isBlocked === "1") {
+    if (user.isBlocked === true || user.isBlocked === 1) {
       return NextResponse.json({ ok: false, error: "USER_BLOCKED" }, { status: 403 });
     }
 

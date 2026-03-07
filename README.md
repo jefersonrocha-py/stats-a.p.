@@ -90,7 +90,7 @@ etherium-antennas/
 ├─ scripts/
 │  ├─ gdms-cron.mjs        # worker do GDMS
 │  └─ seed-local.mjs       # cria SUPERADMIN
-├─ .env.example
+├─ .env
 ├─ Dockerfile
 ├─ docker-compose.yml
 ├─ tailwind.config.ts
@@ -117,7 +117,7 @@ etherium-antennas/
 
 ## 🔧 Variáveis de Ambiente
 
-Crie seu `.env` a partir do `.env.example`. Campos principais:
+Configure seu `.env`. Campos principais:
 
 ```ini
 # App
