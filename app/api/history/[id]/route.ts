@@ -25,8 +25,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 200) : 50;
 
   const items = await dbQuery<StatusHistoryRow>(
-    "SELECT `id`, `antennaId`, `status`, `changedAt` FROM `StatusHistory` WHERE `antennaId` = ? ORDER BY `changedAt` DESC LIMIT ?",
-    [antennaId, limit]
+    `SELECT \`id\`, \`antennaId\`, \`status\`, \`changedAt\` FROM \`StatusHistory\` WHERE \`antennaId\` = ? ORDER BY \`changedAt\` DESC LIMIT ${limit}`,
+    [antennaId]
   );
 
   return NextResponse.json({ ok: true, items: items.map(mapStatusHistoryRow) });

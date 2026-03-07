@@ -81,8 +81,8 @@ export async function GET(req: Request) {
     const skip = (currentPage - 1) * pageSize;
 
     const items = await dbQuery<AntennaRow>(
-      `SELECT * FROM \`Antenna\` ${whereSql} ORDER BY \`id\` ASC LIMIT ? OFFSET ?`,
-      [...whereParams, pageSize, skip]
+      `SELECT * FROM \`Antenna\` ${whereSql} ORDER BY \`id\` ASC LIMIT ${pageSize} OFFSET ${skip}`,
+      whereParams
     );
 
     return NextResponse.json({

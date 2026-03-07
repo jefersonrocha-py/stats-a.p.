@@ -10,6 +10,8 @@ type Props = {
   down: number;
   upPct: number;   // 0..100
   downPct: number; // 0..100
+  connectedClients?: number | null;
+  clientNetworks?: number | null;
   isLoading?: boolean;
   className?: string;
 
@@ -221,6 +223,8 @@ function DashboardCardsInner({
   down,
   upPct,
   downPct,
+  connectedClients,
+  clientNetworks,
   isLoading,
   className,
   items,
@@ -262,20 +266,33 @@ function DashboardCardsInner({
   }, [items, page, pageSize]);
 
   if (isLoading) {
+    const skeletonCount = connectedClients !== undefined ? 5 : 4;
     return (
-      <div className={cx("grid grid-cols-2 md:grid-cols-4 gap-3", className)}>
-        <SkeletonCard />
-        <SkeletonCard />
-        <SkeletonCard />
-        <SkeletonCard />
+      <div className={cx("grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5", className)}>
+        {Array.from({ length: skeletonCount }).map((_, index) => (
+          <SkeletonCard key={index} />
+        ))}
       </div>
     );
   }
 
+  const showConnectedClientsCard = connectedClients !== undefined;
+  const clientSub =
+    connectedClients === null
+      ? "Atualizando leitura do GDMS"
+      : clientNetworks && clientNetworks > 0
+      ? `${fmtInt(clientNetworks)} network${clientNetworks === 1 ? "" : "s"}`
+      : "Visao geral do GDMS";
+
   return (
     <div className={cx("space-y-3", className)}>
       {/* Cards de métricas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div
+        className={cx(
+          "grid grid-cols-2 gap-3",
+          showConnectedClientsCard ? "md:grid-cols-4 xl:grid-cols-5" : "md:grid-cols-4"
+        )}
+      >
         <Card
           title="Total"
           value={fmtInt(safe.total)}
@@ -305,6 +322,19 @@ function DashboardCardsInner({
           progressPct={safe.upPct}
           aria-label={`Disponibilidade: ${fmtPct(safe.upPct)}`}
         />
+        {showConnectedClientsCard && (
+          <Card
+            title="Clientes Conectados"
+            value={connectedClients === null ? "..." : fmtInt(connectedClients)}
+            sub={clientSub}
+            accent="cyan"
+            aria-label={
+              connectedClients === null
+                ? "Clientes conectados em atualizacao"
+                : `Clientes conectados: ${fmtInt(connectedClients)}`
+            }
+          />
+        )}
       </div>
 
       {/* Tabela paginada (opcional) */}

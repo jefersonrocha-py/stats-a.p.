@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import DashboardCards from "@components/DashboardCards";
 import DonutChart from "@components/DonutChart";
-import { api, type Stats } from "@services/api";
+import { api, type NetworkClientStatsResponse, type Stats } from "@services/api";
 import { connectSSE } from "@services/sseClient";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [networkClientStats, setNetworkClientStats] = useState<NetworkClientStatsResponse | null>(null);
   const [chartVariant, setChartVariant] = useState<"donut" | "gauge" | "radial">("donut");
   const [showLegend, setShowLegend] = useState(true);
 
@@ -15,9 +16,13 @@ export default function DashboardPage() {
     let active = true;
 
     async function loadStats() {
-      const statsResult = await api<Stats>("/api/stats").catch(() => null);
+      const [statsResult, networkClientStatsResult] = await Promise.all([
+        api<Stats>("/api/stats").catch(() => null),
+        api<NetworkClientStatsResponse>("/api/stats/network-clients").catch(() => null),
+      ]);
       if (!active) return;
       setStats(statsResult || null);
+      setNetworkClientStats(networkClientStatsResult || null);
     }
 
     loadStats();
@@ -64,20 +69,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <section className="glass rounded-3xl p-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-2 max-w-3xl text-sm opacity-75">
-          Visao consolidada dos APs monitorados. Os filtros operacionais e as exportacoes ficam
-          agora em uma tela separada para manter este dashboard focado nos indicadores.
-        </p>
-      </section>
-
       <DashboardCards
         total={cardsData?.total ?? 0}
         up={cardsData?.up ?? 0}
         down={cardsData?.down ?? 0}
         upPct={cardsData?.upPct ?? 0}
         downPct={cardsData?.downPct ?? 0}
+        connectedClients={networkClientStats?.totalClients ?? null}
+        clientNetworks={networkClientStats?.totalNetworks ?? null}
         isLoading={!cardsData}
       />
 

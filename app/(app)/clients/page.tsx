@@ -33,15 +33,7 @@ export default function ClientsPage() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      <section className="glass rounded-3xl p-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
-        <p className="mt-2 max-w-3xl text-sm opacity-75">
-          Painel dedicado aos clientes conectados por network no GDMS, separado das metricas
-          operacionais do dashboard principal.
-        </p>
-      </section>
-
+    <div>
       <Client
         items={networkClientStats?.items ?? []}
         totalClients={networkClientStats?.totalClients ?? 0}

@@ -25,6 +25,8 @@ const ETHERIUM_LOGO = {
   height: 369,
 } as const;
 
+const SIDEBAR_VERSION = "V.1.1.0";
+
 type Role = "SUPERADMIN" | "ADMIN" | "USER";
 type MeResponse =
   | { ok: true; user: { id: string | number; name: string; email: string; role: Role } }
@@ -259,24 +261,6 @@ function SidebarContent({
   return (
     <div className="flex h-full flex-col">
       <div className="flex min-h-[64px] items-center gap-2 border-b border-white/10 p-3">
-        {mobile ? (
-          <button
-            type="button"
-            onClick={onNavigate}
-            aria-label="Fechar menu"
-            className="grid h-10 w-10 place-items-center rounded-xl bg-black/5 transition hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            title="Fechar menu"
-          >
-            <span className="relative block h-[2px] w-5 rotate-45 bg-current after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
-          </button>
-        ) : (
-          <Hamburger
-            open={open}
-            onClick={onNavigate || (() => undefined)}
-            title="Expandir ou recolher"
-          />
-        )}
-
         {open ? (
           <>
             <div className="rounded-2xl border border-black/10 bg-white/95 px-3 py-2 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.7)]">
@@ -289,21 +273,57 @@ function SidebarContent({
                 priority
               />
             </div>
+            {mobile ? (
+              <button
+                type="button"
+                onClick={onNavigate}
+                aria-label="Fechar menu"
+                className="grid h-10 w-10 place-items-center rounded-xl bg-black/5 transition hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                title="Fechar menu"
+              >
+                <span className="relative block h-[2px] w-5 rotate-45 bg-current after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
+              </button>
+            ) : (
+              <Hamburger
+                open={open}
+                onClick={onNavigate || (() => undefined)}
+                title="Expandir ou recolher"
+              />
+            )}
             <span className="ml-auto rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/65">
-              v1.0.0
+              {SIDEBAR_VERSION}
             </span>
           </>
         ) : (
-          <div className="grid h-11 w-11 place-items-center rounded-2xl border border-black/10 bg-white/95 p-2 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.7)]">
-            <Image
-              src={ETHERIUM_LOGO.src}
-              alt={ETHERIUM_LOGO.alt}
-              width={ETHERIUM_LOGO.width}
-              height={ETHERIUM_LOGO.height}
-              className="h-full w-auto max-w-full object-contain"
-              priority
-            />
-          </div>
+          <>
+            {mobile ? (
+              <button
+                type="button"
+                onClick={onNavigate}
+                aria-label="Fechar menu"
+                className="grid h-10 w-10 place-items-center rounded-xl bg-black/5 transition hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                title="Fechar menu"
+              >
+                <span className="relative block h-[2px] w-5 rotate-45 bg-current after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
+              </button>
+            ) : (
+              <Hamburger
+                open={open}
+                onClick={onNavigate || (() => undefined)}
+                title="Expandir ou recolher"
+              />
+            )}
+            <div className="grid h-11 w-11 place-items-center rounded-2xl border border-black/10 bg-white/95 p-2 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.7)]">
+              <Image
+                src={ETHERIUM_LOGO.src}
+                alt={ETHERIUM_LOGO.alt}
+                width={ETHERIUM_LOGO.width}
+                height={ETHERIUM_LOGO.height}
+                className="h-full w-auto max-w-full object-contain"
+                priority
+              />
+            </div>
+          </>
         )}
       </div>
 
