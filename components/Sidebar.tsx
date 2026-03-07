@@ -88,8 +88,7 @@ function Hamburger({
   onClick: () => void;
   title?: string;
 }) {
-  const barBase =
-    "absolute block h-[2px] w-5 rounded-full bg-current transition-all duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:duration-0";
+  const barBase = "absolute block h-[2px] w-5 rounded-full bg-current";
 
   return (
     <button
@@ -109,19 +108,10 @@ function Hamburger({
         }`}
       />
       <span
-        className={`${barBase} ${open ? "translate-y-0 rotate-45" : "-translate-y-1.5 rotate-0"}`}
-        style={{ transformOrigin: "center" }}
+        className={`${barBase} -translate-y-1.5`}
       />
-      <span
-        className={`${barBase} transition-opacity ${
-          open ? "scale-x-0 opacity-0" : "scale-x-100 opacity-100"
-        }`}
-        style={{ transformOrigin: "center" }}
-      />
-      <span
-        className={`${barBase} ${open ? "translate-y-0 -rotate-45" : "translate-y-1.5 rotate-0"}`}
-        style={{ transformOrigin: "center" }}
-      />
+      <span className={barBase} />
+      <span className={`${barBase} translate-y-1.5`} />
     </button>
   );
 }
@@ -273,46 +263,24 @@ function SidebarContent({
                 priority
               />
             </div>
-            {mobile ? (
-              <button
-                type="button"
-                onClick={onNavigate}
-                aria-label="Fechar menu"
-                className="grid h-10 w-10 place-items-center rounded-xl bg-black/5 transition hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                title="Fechar menu"
-              >
-                <span className="relative block h-[2px] w-5 rotate-45 bg-current after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
-              </button>
-            ) : (
+            <div className="ml-auto flex items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/65">
+                {SIDEBAR_VERSION}
+              </span>
               <Hamburger
                 open={open}
                 onClick={onNavigate || (() => undefined)}
-                title="Expandir ou recolher"
+                title={mobile ? "Fechar menu" : "Expandir ou recolher"}
               />
-            )}
-            <span className="ml-auto rounded-full border border-white/10 bg-black/15 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/65">
-              {SIDEBAR_VERSION}
-            </span>
+            </div>
           </>
         ) : (
           <>
-            {mobile ? (
-              <button
-                type="button"
-                onClick={onNavigate}
-                aria-label="Fechar menu"
-                className="grid h-10 w-10 place-items-center rounded-xl bg-black/5 transition hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                title="Fechar menu"
-              >
-                <span className="relative block h-[2px] w-5 rotate-45 bg-current after:absolute after:inset-0 after:-rotate-90 after:bg-current" />
-              </button>
-            ) : (
-              <Hamburger
-                open={open}
-                onClick={onNavigate || (() => undefined)}
-                title="Expandir ou recolher"
-              />
-            )}
+            <Hamburger
+              open={open}
+              onClick={onNavigate || (() => undefined)}
+              title={mobile ? "Fechar menu" : "Expandir ou recolher"}
+            />
             <div className="grid h-11 w-11 place-items-center rounded-2xl border border-black/10 bg-white/95 p-2 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.7)]">
               <Image
                 src={ETHERIUM_LOGO.src}
