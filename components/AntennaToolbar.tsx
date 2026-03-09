@@ -15,7 +15,6 @@ type Props = {
   onNetworkChange: (value: string) => void;
   onPageSizeChange: (value: number) => void;
   onExportCsv?: () => void;
-  onExportXlsx?: () => void;
 };
 
 export default function AntennaToolbar({
@@ -33,9 +32,8 @@ export default function AntennaToolbar({
   onNetworkChange,
   onPageSizeChange,
   onExportCsv,
-  onExportXlsx,
 }: Props) {
-  const canExport = typeof onExportCsv === "function" || typeof onExportXlsx === "function";
+  const canExport = typeof onExportCsv === "function";
 
   return (
     <section className="glass space-y-4 rounded-3xl p-5">
@@ -94,24 +92,14 @@ export default function AntennaToolbar({
 
         <div className="flex flex-wrap items-end gap-2">
           {canExport && (
-            <>
-              <button
-                type="button"
-                onClick={onExportCsv}
-                disabled={exporting}
-                className="rounded-2xl bg-brand1 px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-              >
-                {exporting ? "Exportando..." : "Exportar CSV"}
-              </button>
-              <button
-                type="button"
-                onClick={onExportXlsx}
-                disabled={exporting}
-                className="rounded-2xl border border-black/10 bg-white/80 px-4 py-3 text-sm font-medium transition hover:bg-black/5 disabled:opacity-50 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15"
-              >
-                {exporting ? "Exportando..." : "Exportar XLSX"}
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={onExportCsv}
+              disabled={exporting}
+              className="rounded-2xl bg-brand1 px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {exporting ? "Exportando..." : "Exportar CSV"}
+            </button>
           )}
           {extraAction}
         </div>

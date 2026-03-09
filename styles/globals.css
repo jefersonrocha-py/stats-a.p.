@@ -27,8 +27,8 @@ html.dark {
 
 /* ========= SEU CSS existente (mantido) ========= */
 
-/* Leaflet */
-@import 'leaflet/dist/leaflet.css';
+/* MapLibre */
+@import 'maplibre-gl/dist/maplibre-gl.css';
 
 html, body, #__next { height: 100%; }
 

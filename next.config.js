@@ -5,7 +5,9 @@ const path = require("path");
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  poweredByHeader: false,
   images: {
+    unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "etheriumtech.com.br" }
     ]

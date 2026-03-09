@@ -7,6 +7,7 @@ import { requireRequestAuth } from "@lib/auth";
 import { mapAntennaRow } from "@lib/dbMappers";
 import { mapDbError } from "@lib/dbErrors";
 import { dbExecute, dbQueryOne, withTransaction } from "@lib/mysql";
+import { checkRateLimit, rateLimitResponse } from "@lib/rateLimit";
 import { emit } from "@lib/sse";
 import { antennaUpdateSchema } from "@lib/validators";
 
@@ -55,6 +56,15 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
 export async function PATCH(req: Request, ctx: { params: { id: string } }) {
   const auth = await requireRequestAuth(req, ["ADMIN", "SUPERADMIN"]);
   if ("response" in auth) return auth.response;
+
+  const rateLimit = checkRateLimit(req, "antenna-update", {
+    max: 180,
+    windowMs: 15 * 60_000,
+    key: auth.user.sub,
+  });
+  if (!rateLimit.ok) {
+    return rateLimitResponse(rateLimit);
+  }
 
   const idNum = Number(ctx.params.id);
   if (!Number.isFinite(idNum)) {
@@ -160,6 +170,15 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
 export async function DELETE(req: Request, ctx: { params: { id: string } }) {
   const auth = await requireRequestAuth(req, ["ADMIN", "SUPERADMIN"]);
   if ("response" in auth) return auth.response;
+
+  const rateLimit = checkRateLimit(req, "antenna-delete", {
+    max: 40,
+    windowMs: 60 * 60_000,
+    key: auth.user.sub,
+  });
+  if (!rateLimit.ok) {
+    return rateLimitResponse(rateLimit);
+  }
 
   const idNum = Number(ctx.params.id);
   if (!Number.isFinite(idNum)) {

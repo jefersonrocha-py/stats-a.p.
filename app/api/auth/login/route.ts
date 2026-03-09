@@ -6,13 +6,13 @@ import type { RowDataPacket } from "mysql2/promise";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
-  AUTH_COOKIE_NAME,
-  getJwtExpiresDays,
-  shouldUseSecureCookies,
+  requireTrustedOrigin,
+  setAuthCookies,
   signAuthToken,
   type UserRole,
 } from "@lib/auth";
 import { dbQueryOne } from "@lib/mysql";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@lib/rateLimit";
 import { loginSchema } from "@lib/validatorsAuth";
 
 type UserRow = RowDataPacket & {
@@ -26,6 +26,17 @@ type UserRow = RowDataPacket & {
 
 export async function POST(req: Request) {
   try {
+    const originError = requireTrustedOrigin(req);
+    if (originError) return originError;
+
+    const ipRateLimit = checkRateLimit(req, "auth-login-ip", {
+      max: 30,
+      windowMs: 10 * 60_000,
+    });
+    if (!ipRateLimit.ok) {
+      return rateLimitResponse(ipRateLimit);
+    }
+
     const body = await req.json().catch(() => ({}));
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) {
@@ -36,10 +47,19 @@ export async function POST(req: Request) {
     }
 
     const { email, password } = parsed.data;
+    const normalizedEmail = email.toLowerCase();
+    const rateLimit = checkRateLimit(req, "auth-login", {
+      max: 8,
+      windowMs: 10 * 60_000,
+      key: `${getClientIp(req)}:${normalizedEmail}`,
+    });
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
 
     const user = await dbQueryOne<UserRow>(
       "SELECT `id`, `email`, `name`, `role`, `passwordHash`, `isBlocked` FROM `User` WHERE `email` = ? LIMIT 1",
-      [email.toLowerCase()]
+      [normalizedEmail]
     );
 
     if (!user) {
@@ -47,7 +67,7 @@ export async function POST(req: Request) {
     }
 
     if (user.isBlocked === true || user.isBlocked === 1) {
-      return NextResponse.json({ ok: false, error: "USER_BLOCKED" }, { status: 403 });
+      return NextResponse.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
     const passwordOk = await bcrypt.compare(password, user.passwordHash);
@@ -66,15 +86,7 @@ export async function POST(req: Request) {
       role,
     });
 
-    cookies().set({
-      name: AUTH_COOKIE_NAME,
-      value: token,
-      httpOnly: true,
-      sameSite: "lax",
-      secure: shouldUseSecureCookies(),
-      path: "/",
-      maxAge: 60 * 60 * 24 * getJwtExpiresDays(),
-    });
+    setAuthCookies(cookies(), token);
 
     return NextResponse.json({
       ok: true,

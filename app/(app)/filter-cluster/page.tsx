@@ -220,26 +220,6 @@ export default function FilterClusterPage() {
     }
   }
 
-  async function exportXlsx() {
-    setExporting(true);
-    try {
-      const rows = mapExportRows(await fetchAllFilteredItems());
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.json_to_sheet(rows);
-      XLSX.utils.book_append_sheet(workbook, worksheet, "APs");
-      const bytes = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-      downloadBlob(
-        "filtros-cluster-aps.xlsx",
-        new Blob([bytes], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        })
-      );
-    } finally {
-      setExporting(false);
-    }
-  }
-
   const summary = useMemo(() => {
     const up = items.filter((item) => item.status === "UP").length;
     const down = items.filter((item) => item.status === "DOWN").length;
@@ -250,7 +230,7 @@ export default function FilterClusterPage() {
     <div className="space-y-4">
       <AntennaToolbar
         title="Filtros Cluster & APs"
-        description="Tela operacional para localizar APs por nome ou cluster e exportar os resultados em CSV ou XLSX."
+        description="Tela operacional para localizar APs por nome ou cluster e exportar os resultados em CSV."
         query={query}
         network={network}
         networks={networks}
@@ -271,7 +251,6 @@ export default function FilterClusterPage() {
           setPage(1);
         }}
         onExportCsv={exportCsv}
-        onExportXlsx={exportXlsx}
       />
 
       <section className="grid gap-3 md:grid-cols-3">

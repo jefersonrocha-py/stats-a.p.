@@ -1,28 +1,16 @@
 "use client";
 
-/**
- * MapClient – Mogi Mirim com limites (maxBounds) + painel à direita (revisado)
- * - Ícone da antena (faWifi) restaurado
- * - Enquadra cidade e pinos filtrados
- * - Alternância de mapa base (Satélite / OSM claro)
- * - ZoomControl em bottom-right para não conflitar com o FAB
- * - Preview de pin ao escolher Lat/Lon no modal
- * - Contagem por rede respeitando filtros
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
+import maplibregl, {
+  LngLatBounds,
+  NavigationControl,
   Popup,
-  Tooltip,
-  ZoomControl,
-  useMap,
-} from "react-leaflet";
-import * as L from "leaflet";
-import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
-import "leaflet/dist/leaflet.css";
+  type LngLatBoundsLike,
+  type LngLatLike,
+  type MapMouseEvent,
+  type Marker,
+  type StyleSpecification,
+} from "maplibre-gl";
 
 import { api } from "@services/api";
 import { connectSSE } from "@services/sseClient";
@@ -39,33 +27,14 @@ import {
   faCircleXmark,
   faBroom,
   faLocationCrosshairs,
+  faCompass,
+  faChevronUp,
+  faChevronRight,
+  faChevronDown,
+  faChevronLeft,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 
-// ===== helpers de ícone (usa o path do FontAwesome para gerar SVG como data URL)
-function faToSvgDataUrl(icon: IconDefinition, color: string, scale = 1) {
-  // IconDefinition.icon: [width, height, ligatures, unicode, svgPathData]
-  const def = icon.icon as unknown as [number, number, string[], string, string | string[]];
-  const [w, h, , , paths] = def;
-  const d = Array.isArray(paths) ? paths.join("") : paths;
-  const viewW = w * scale;
-  const viewH = h * scale;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${viewW}" height="${viewH}" viewBox="0 0 ${w} ${h}">
-  <path d="${d}" fill="${color}"/>
-</svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-function makeLeafletIcon(color: string, scale = 1.0) {
-  return L.icon({
-    iconUrl: faToSvgDataUrl(faWifi, color, scale),
-    iconSize: [28 * scale, 28 * scale],
-    iconAnchor: [14 * scale, 28 * scale],
-    popupAnchor: [0, -28 * scale],
-    className: "drop-shadow-[0_6px_10px_rgba(0,0,0,0.35)]",
-  });
-}
-
-// ===== Tipos
 type Antenna = {
   id: number | string;
   name: string;
@@ -78,78 +47,131 @@ type Antenna = {
 };
 
 type Role = "SUPERADMIN" | "ADMIN" | "USER";
-
-// ===== Centro e limites de Mogi Mirim
-const CITY_CENTER: LatLngExpression = [-22.431, -46.955];
-const CITY_BOUNDS_ARR: LatLngBoundsExpression = [
-  [-22.5, -47.05], // SW
-  [-22.36, -46.86], // NE
-];
-const CITY_BOUNDS = L.latLngBounds(CITY_BOUNDS_ARR); // bounds real
-
-// ===== Mapas base
 type BasemapKey = "sat" | "light";
+
+const CITY_CENTER: LngLatLike = [-46.955, -22.431];
+const CITY_BOUNDS: LngLatBoundsLike = [
+  [-47.05, -22.5],
+  [-46.86, -22.36],
+];
+
 const TILE_SAT = {
   url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   attribution:
-    '&copy; <a href="https://www.esri.com/">Esri</a> — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    '&copy; <a href="https://www.esri.com/">Esri</a> - Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
 };
+
 const TILE_LIGHT = {
   url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  attribution: '&copy; <a href="https://www.openstreetmap.org/\">OpenStreetMap</a> contributors',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
 };
 
-// ===== Comps utilitários
-function FsResize() {
-  const map = useMap();
-  useEffect(() => {
-    const onFs = () => setTimeout(() => map.invalidateSize(), 80);
-    document.addEventListener("fullscreenchange", onFs);
-    window.addEventListener("resize", onFs);
-    return () => {
-      document.removeEventListener("fullscreenchange", onFs);
-      window.removeEventListener("resize", onFs);
-    };
-  }, [map]);
-  return null;
+const JOYSTICK_RADIUS = 26;
+
+function faToSvgMarkup(icon: IconDefinition, color: string, scale = 1) {
+  const def = icon.icon as unknown as [number, number, string[], string, string | string[]];
+  const [width, height, , , paths] = def;
+  const d = Array.isArray(paths) ? paths.join("") : paths;
+  const viewWidth = width * scale;
+  const viewHeight = height * scale;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${viewWidth}" height="${viewHeight}" viewBox="0 0 ${width} ${height}" aria-hidden="true" style="display:block;filter:drop-shadow(0 6px 10px rgba(0,0,0,0.35));">
+    <path d="${d}" fill="${color}" />
+  </svg>`;
 }
 
-function ClickPicker({
-  enabled,
-  setLat,
-  setLon,
-}: {
-  enabled: boolean;
-  setLat: (v: string) => void;
-  setLon: (v: string) => void;
-}) {
-  const map = useMap();
-  useEffect(() => {
-    const onClick = (e: L.LeafletMouseEvent) => {
-      if (!enabled) return;
-      const { lat, lng } = e.latlng;
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        setLat(String(lat.toFixed(5)));
-        setLon(String(lng.toFixed(5)));
-      }
-    };
-    map.on("click", onClick);
-    // ⚠️ cleanup deve retornar void — não retorne o Map!
-    return () => {
-      map.off("click", onClick);
-    };
-  }, [map, enabled, setLat, setLon]);
-  return null;
+function makeMarkerElement(color: string, label: string, scale = 1.05, isPreview = false) {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.title = label;
+  element.setAttribute("aria-label", label);
+  element.innerHTML = faToSvgMarkup(faWifi, color, scale);
+  element.style.background = "transparent";
+  element.style.border = "0";
+  element.style.padding = "0";
+  element.style.cursor = "pointer";
+  element.style.transformOrigin = "50% 100%";
+  element.style.opacity = isPreview ? "0.9" : "1";
+  return element;
 }
 
-/** Compatível com v3/v4: inicializa com a instância real do mapa */
-function MapInit({ onInit }: { onInit: (map: L.Map) => void }) {
-  const map = useMap();
-  useEffect(() => {
-    onInit(map);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map]);
-  return null;
+function appendText(parent: HTMLElement, text: string, className?: string) {
+  const node = document.createElement("div");
+  if (className) node.className = className;
+  node.textContent = text;
+  parent.appendChild(node);
+  return node;
+}
+
+function buildPopupContent(antenna: Antenna) {
+  const root = document.createElement("div");
+  root.className = "space-y-1 text-sm";
+
+  appendText(root, antenna.name, "font-semibold");
+
+  if (antenna.networkName) {
+    appendText(root, antenna.networkName, "opacity-80");
+  }
+
+  appendText(root, `${antenna.lat.toFixed(5)}, ${antenna.lon.toFixed(5)}`, "opacity-80");
+
+  if (antenna.description) {
+    appendText(root, antenna.description, "opacity-80");
+  }
+
+  const statusLine = document.createElement("div");
+  statusLine.textContent = "Status: ";
+
+  const statusValue = document.createElement("span");
+  statusValue.className =
+    antenna.status === "DOWN" ? "text-red-500 font-medium" : "text-emerald-500 font-medium";
+  statusValue.textContent = antenna.status;
+
+  statusLine.appendChild(statusValue);
+  root.appendChild(statusLine);
+
+  return root;
+}
+
+function normalizeBearing(value: number) {
+  const normalized = value % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
+}
+
+function getBearingLabel(value: number) {
+  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return directions[Math.round(normalizeBearing(value) / 45) % directions.length];
+}
+
+function buildMapStyle(basemap: BasemapKey): StyleSpecification {
+  const base = basemap === "sat" ? TILE_SAT : TILE_LIGHT;
+
+  return {
+    version: 8,
+    sources: {
+      basemap: {
+        type: "raster",
+        tiles: [base.url],
+        tileSize: 256,
+        attribution: base.attribution,
+        maxzoom: 19,
+      },
+    },
+    layers: [
+      {
+        id: "background",
+        type: "background",
+        paint: {
+          "background-color": basemap === "sat" ? "#0b1220" : "#f3f6f7",
+        },
+      },
+      {
+        id: "basemap",
+        type: "raster",
+        source: "basemap",
+      },
+    ],
+  };
 }
 
 export default function MapClient() {
@@ -157,16 +179,13 @@ export default function MapClient() {
   const [loading, setLoading] = useState(true);
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
   const [role, setRole] = useState<Role | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [bearing, setBearing] = useState(0);
 
-  // filtros
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "UP" | "DOWN">("ALL");
   const [netFilter, setNetFilter] = useState<string>("");
-
-  // painel
   const [panelOpen, setPanelOpen] = useState(true);
-
-  // modal criar
   const [openModal, setOpenModal] = useState(false);
   const [name, setName] = useState("");
   const [lat, setLat] = useState<string>("");
@@ -174,41 +193,44 @@ export default function MapClient() {
   const [desc, setDesc] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const canManage = role === "ADMIN" || role === "SUPERADMIN";
-
-  // mapa base
   const [basemap, setBasemap] = useState<BasemapKey>("sat");
+  const [joystickActive, setJoystickActive] = useState(false);
+  const [joystickOpen, setJoystickOpen] = useState(false);
 
-  // ref do mapa
-  const mapRef = useRef<L.Map | null>(null);
+  const canManage = role === "ADMIN" || role === "SUPERADMIN";
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const markersRef = useRef<Marker[]>([]);
+  const appliedBasemapRef = useRef<BasemapKey>("sat");
+  const joystickRef = useRef<HTMLDivElement | null>(null);
+  const joystickPointerIdRef = useRef<number | null>(null);
 
-  const applyCityBounds = useCallback((map: L.Map) => {
-    map.fitBounds(CITY_BOUNDS, { padding: [24, 24] });
-  }, []);
-
-  const onMapCreated = useCallback(
-    (map: L.Map) => {
-      mapRef.current = map;
-      applyCityBounds(map);
-    },
-    [applyCityBounds],
-  );
-
-  const fitCity = useCallback(() => {
+  const syncBearing = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.fitBounds(CITY_BOUNDS, { padding: [24, 24] });
+    setBearing(map.getBearing());
   }, []);
 
-  // carregar antenas
+  const fitCity = useCallback((animate = true) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.fitBounds(CITY_BOUNDS, {
+      padding: 24,
+      duration: animate ? 600 : 0,
+      maxZoom: 13,
+    });
+  }, []);
+
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/antennas?placed=1&take=5000", { cache: "no-store" });
       const json = await res.json();
       const arr: Antenna[] = Array.isArray(json) ? json : json?.items ?? [];
       const prepared = arr
-        .filter((a) => Number.isFinite(Number(a.lat)) && Number.isFinite(Number(a.lon)))
-        .map((a) => ({ ...a, lat: Number(a.lat), lon: Number(a.lon) }));
+        .filter((antenna) => Number.isFinite(Number(antenna.lat)) && Number.isFinite(Number(antenna.lon)))
+        .map((antenna) => ({ ...antenna, lat: Number(antenna.lat), lon: Number(antenna.lon) }));
+
       setAntennas(prepared);
       setLastLoadedAt(new Date().toLocaleTimeString());
     } catch {
@@ -218,20 +240,22 @@ export default function MapClient() {
     }
   }, []);
 
-  // SSE + polling
   useEffect(() => {
     let alive = true;
+
     (async () => {
       if (alive) await load();
     })();
+
     let disconnect: (() => void) | undefined;
+
     try {
-      disconnect = connectSSE?.((e: MessageEvent) => {
+      disconnect = connectSSE?.((event: MessageEvent) => {
         try {
-          const msg = JSON.parse(e.data);
+          const message = JSON.parse(event.data);
           if (
             ["antenna.updated", "antenna.created", "antenna.deleted", "status.changed"].includes(
-              msg.event,
+              message.event,
             )
           ) {
             load();
@@ -239,7 +263,9 @@ export default function MapClient() {
         } catch {}
       });
     } catch {}
+
     const pollId = setInterval(load, 12_000);
+
     return () => {
       alive = false;
       clearInterval(pollId);
@@ -254,6 +280,7 @@ export default function MapClient() {
       try {
         const response = await fetch("/api/me", { cache: "no-store" });
         const json = await response.json();
+
         if (!alive) return;
         if (json?.ok && json?.user?.role) setRole(json.user.role as Role);
         else setRole(null);
@@ -267,54 +294,134 @@ export default function MapClient() {
     };
   }, []);
 
-  const iconUp = useMemo(() => makeLeafletIcon("#22c55e", 1.4), []);
-  const iconDown = useMemo(() => makeLeafletIcon("#ef4444", 1.4), []);
+  useEffect(() => {
+    const container = mapContainerRef.current;
+    if (!container || mapRef.current) return;
+
+    const map = new maplibregl.Map({
+      container,
+      style: buildMapStyle(appliedBasemapRef.current),
+      center: CITY_CENTER,
+      zoom: 12,
+      minZoom: 10,
+      maxZoom: 19,
+      minPitch: 0,
+      maxPitch: 0,
+      dragRotate: true,
+      touchZoomRotate: true,
+      touchPitch: false,
+      doubleClickZoom: true,
+      maxBounds: CITY_BOUNDS,
+      attributionControl: { compact: true },
+      renderWorldCopies: false,
+    });
+
+    mapRef.current = map;
+    map.addControl(
+      new NavigationControl({ showCompass: false, showZoom: true, visualizePitch: false }),
+      "bottom-right",
+    );
+
+    const handleInitialLoad = () => {
+      setMapReady(true);
+      syncBearing();
+      fitCity(false);
+    };
+
+    const handleResize = () => map.resize();
+    const resizeObserver = new ResizeObserver(handleResize);
+
+    map.once("load", handleInitialLoad);
+    map.on("rotate", syncBearing);
+
+    resizeObserver.observe(container);
+    window.addEventListener("resize", handleResize);
+    document.addEventListener("fullscreenchange", handleResize);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", handleResize);
+      document.removeEventListener("fullscreenchange", handleResize);
+      map.off("rotate", syncBearing);
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current = [];
+      setMapReady(false);
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [fitCity, syncBearing]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || appliedBasemapRef.current === basemap) return;
+
+    appliedBasemapRef.current = basemap;
+    map.setStyle(buildMapStyle(basemap));
+  }, [basemap, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const onClick = (event: MapMouseEvent) => {
+      if (!openModal) return;
+      setLat(event.lngLat.lat.toFixed(5));
+      setLon(event.lngLat.lng.toFixed(5));
+    };
+
+    map.on("click", onClick);
+
+    return () => {
+      map.off("click", onClick);
+    };
+  }, [openModal]);
 
   const term = useMemo(() => q.trim().toLowerCase(), [q]);
 
   const networks = useMemo(
-    () => Array.from(new Set(antennas.map((a) => a.networkName ?? "").filter(Boolean))).sort(),
+    () => Array.from(new Set(antennas.map((antenna) => antenna.networkName ?? "").filter(Boolean))).sort(),
     [antennas],
   );
 
-  // Helpers de filtro reutilizáveis
   const matchesStatus = useCallback(
-    (a: Antenna) => statusFilter === "ALL" || a.status === statusFilter,
+    (antenna: Antenna) => statusFilter === "ALL" || antenna.status === statusFilter,
     [statusFilter],
   );
+
   const matchesSearch = useCallback(
-    (a: Antenna) =>
-      !term || `${a.name ?? ""} ${a.networkName ?? ""}`.toLowerCase().includes(term),
+    (antenna: Antenna) =>
+      !term || `${antenna.name ?? ""} ${antenna.networkName ?? ""}`.toLowerCase().includes(term),
     [term],
   );
 
   const filtered = useMemo(() => {
-    return antennas.filter((a) => {
-      if (netFilter && (a.networkName ?? "") !== netFilter) return false;
-      if (!matchesStatus(a)) return false;
-      if (!matchesSearch(a)) return false;
+    return antennas.filter((antenna) => {
+      if (netFilter && (antenna.networkName ?? "") !== netFilter) return false;
+      if (!matchesStatus(antenna)) return false;
+      if (!matchesSearch(antenna)) return false;
       return true;
     });
-  }, [antennas, netFilter, matchesStatus, matchesSearch]);
+  }, [antennas, matchesSearch, matchesStatus, netFilter]);
 
   const totals = useMemo(() => {
     const total = filtered.length;
-    const up = filtered.filter((a) => a.status === "UP").length;
-    const down = filtered.filter((a) => a.status === "DOWN").length;
+    const up = filtered.filter((antenna) => antenna.status === "UP").length;
+    const down = filtered.filter((antenna) => antenna.status === "DOWN").length;
     return { total, up, down };
   }, [filtered]);
 
   const netCounts = useMemo(() => {
-    // conta por rede respeitando status/busca atuais
-    const map = new Map<string, number>();
-    antennas.forEach((a) => {
-      const n = a.networkName ?? "";
-      if (!n) return;
-      if (!matchesStatus(a)) return;
-      if (!matchesSearch(a)) return;
-      map.set(n, (map.get(n) ?? 0) + 1);
+    const counts = new Map<string, number>();
+
+    antennas.forEach((antenna) => {
+      const networkName = antenna.networkName ?? "";
+      if (!networkName) return;
+      if (!matchesStatus(antenna)) return;
+      if (!matchesSearch(antenna)) return;
+      counts.set(networkName, (counts.get(networkName) ?? 0) + 1);
     });
-    return map;
+
+    return counts;
   }, [antennas, matchesSearch, matchesStatus]);
 
   const clearFilters = useCallback(() => {
@@ -326,27 +433,91 @@ export default function MapClient() {
   const tempPos = useMemo(() => {
     const latNum = Number(lat.toString().replace(",", "."));
     const lonNum = Number(lon.toString().replace(",", "."));
+
     if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return null;
     if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) return null;
+
     return [latNum, lonNum] as [number, number];
   }, [lat, lon]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    markersRef.current.forEach((marker) => marker.remove());
+    markersRef.current = [];
+
+    filtered.forEach((antenna) => {
+      const color = antenna.status === "DOWN" ? "#ef4444" : "#22c55e";
+      const marker = new maplibregl.Marker({
+        element: makeMarkerElement(color, antenna.name),
+        anchor: "bottom",
+        rotationAlignment: "viewport",
+        pitchAlignment: "viewport",
+      })
+        .setLngLat([antenna.lon, antenna.lat])
+        .setPopup(new Popup({ offset: 20, maxWidth: "320px" }).setDOMContent(buildPopupContent(antenna)))
+        .addTo(map);
+
+      markersRef.current.push(marker);
+    });
+
+    if (openModal && tempPos) {
+      const previewMarker = new maplibregl.Marker({
+        element: makeMarkerElement("#38bdf8", "Posicao selecionada", 1.05, true),
+        anchor: "bottom",
+        rotationAlignment: "viewport",
+        pitchAlignment: "viewport",
+      })
+        .setLngLat([tempPos[1], tempPos[0]])
+        .addTo(map);
+
+      markersRef.current.push(previewMarker);
+    }
+
+    return () => {
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current = [];
+    };
+  }, [filtered, mapReady, openModal, tempPos]);
+
+  const fitPins = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || filtered.length === 0) return;
+
+    const bounds = filtered.reduce(
+      (acc, antenna) => acc.extend([antenna.lon, antenna.lat]),
+      new LngLatBounds([filtered[0].lon, filtered[0].lat], [filtered[0].lon, filtered[0].lat]),
+    );
+
+    map.fitBounds(bounds, {
+      padding: 28,
+      duration: 600,
+      maxZoom: filtered.length === 1 ? 17 : 18,
+    });
+  }, [filtered]);
+
   const handleCreate = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
+    async (event: React.FormEvent) => {
+      event.preventDefault();
       if (saving) return;
+
       const latNum = Number(lat.toString().replace(",", "."));
       const lonNum = Number(lon.toString().replace(",", "."));
+
       if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) {
-        setErr("Latitude/Longitude inválidas.");
+        setErr("Latitude/Longitude invalidas.");
         return;
       }
+
       if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) {
-        setErr("Fora do intervalo geográfico.");
+        setErr("Fora do intervalo geografico.");
         return;
       }
+
       setSaving(true);
       setErr(null);
+
       try {
         const body = {
           name: name.trim(),
@@ -354,10 +525,12 @@ export default function MapClient() {
           lon: lonNum,
           description: desc.trim() || undefined,
         };
+
         const created = await api<any>("/api/antennas", {
           method: "POST",
           body: JSON.stringify(body),
         });
+
         const createdItem = created?.item ?? created;
         setAntennas((prev) => (createdItem && createdItem.id ? [createdItem, ...prev] : prev));
         setName("");
@@ -365,89 +538,291 @@ export default function MapClient() {
         setLon("");
         setDesc("");
         setOpenModal(false);
-      } catch (er: any) {
-        setErr(er?.message || "Erro ao salvar.");
+      } catch (error: any) {
+        setErr(error?.message || "Erro ao salvar.");
       } finally {
         setSaving(false);
       }
     },
-    [saving, lat, lon, name, desc],
+    [desc, lat, lon, name, saving],
   );
 
-  const fitPins = useCallback(() => {
+  const handleBearingChange = useCallback((value: number) => {
     const map = mapRef.current;
-    if (!map || filtered.length === 0) return;
-    const bounds = L.latLngBounds(filtered.map((a) => [a.lat, a.lon] as [number, number]));
-    if (bounds.isValid()) map.fitBounds(bounds, { padding: [28, 28] });
-  }, [filtered]);
+    if (!map) return;
+    map.setBearing(value);
+  }, []);
+
+  const resetBearing = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.easeTo({
+      bearing: 0,
+      duration: 300,
+    });
+  }, []);
+
+  const setBearingPreset = useCallback((value: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.easeTo({
+      bearing: value,
+      duration: 220,
+    });
+  }, []);
+
+  const updateBearingFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const joystick = joystickRef.current;
+      if (!joystick) return;
+
+      const rect = joystick.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dx = clientX - centerX;
+      const dy = clientY - centerY;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance < 10) return;
+
+      const angle = normalizeBearing((Math.atan2(dx, -dy) * 180) / Math.PI);
+      handleBearingChange(angle > 180 ? angle - 360 : angle);
+    },
+    [handleBearingChange],
+  );
+
+  const clearJoystickInteraction = useCallback(() => {
+    joystickPointerIdRef.current = null;
+    setJoystickActive(false);
+  }, []);
+
+  const handleJoystickPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      joystickPointerIdRef.current = event.pointerId;
+      setJoystickActive(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      updateBearingFromPointer(event.clientX, event.clientY);
+    },
+    [updateBearingFromPointer],
+  );
+
+  const handleJoystickPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (joystickPointerIdRef.current !== event.pointerId) return;
+      updateBearingFromPointer(event.clientX, event.clientY);
+    },
+    [updateBearingFromPointer],
+  );
+
+  const finishJoystickInteraction = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (joystickPointerIdRef.current !== event.pointerId) return;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      clearJoystickInteraction();
+    },
+    [clearJoystickInteraction],
+  );
+
+  const heading = useMemo(() => normalizeBearing(bearing), [bearing]);
+  const headingLabel = useMemo(() => getBearingLabel(bearing), [bearing]);
+  const joystickVector = useMemo(() => {
+    const radians = (heading * Math.PI) / 180;
+    return {
+      x: Math.sin(radians) * JOYSTICK_RADIUS,
+      y: -Math.cos(radians) * JOYSTICK_RADIUS,
+    };
+  }, [heading]);
 
   return (
-    <div id="map-root" className="relative h-[calc(100vh-8rem)] w-full rounded-xl overflow-hidden shadow-inner">
-      {/* Botões do topo direito */}
-      <div className="absolute z-[1005] top-4 right-4 flex gap-2 pointer-events-none">
+    <div id="map-root" className="relative h-[calc(100vh-8rem)] w-full overflow-hidden rounded-xl shadow-inner">
+      <div ref={mapContainerRef} className="h-full w-full" />
+
+      <div className="pointer-events-none absolute left-4 top-4 z-[1005] flex flex-col gap-2">
         <button
-          onClick={() => setPanelOpen((v) => !v)}
-          className="pointer-events-auto inline-flex items-center gap-2 px-3 h-10 rounded-xl bg-white/85 text-black hover:bg-white shadow-lg"
+          onClick={() => setJoystickOpen((value) => !value)}
+          className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950/82 text-white shadow-lg ring-1 ring-white/10 backdrop-blur-sm hover:bg-slate-900/90"
+          title={joystickOpen ? "Fechar controle de rotacao" : "Abrir controle de rotacao"}
+          aria-label={joystickOpen ? "Fechar controle de rotacao" : "Abrir controle de rotacao"}
+        >
+          <FontAwesomeIcon
+            icon={faCompass}
+            className="h-4 w-4 text-sky-300 transition-transform"
+            style={{ transform: `rotate(${-bearing}deg)` }}
+          />
+        </button>
+
+        {joystickOpen && (
+          <div
+            className="pointer-events-auto relative w-[142px] rounded-[22px] bg-slate-950/92 p-3 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-md"
+            role="dialog"
+            aria-label="Controle de rotacao do mapa"
+          >
+            <button
+              onClick={() => setJoystickOpen(false)}
+              className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
+              title="Fechar controle"
+              aria-label="Fechar controle"
+            >
+              <FontAwesomeIcon icon={faXmark} className="h-3 w-3" />
+            </button>
+
+            <div className="pr-6 text-[10px] uppercase tracking-[0.18em] text-white/45">Rotacao</div>
+            <div className="pr-6 text-xs font-semibold text-white/85">
+              {Math.round(heading)}&deg; {headingLabel}
+            </div>
+
+            <div className="mt-3 flex justify-center">
+              <div
+                ref={joystickRef}
+                onPointerDown={handleJoystickPointerDown}
+                onPointerMove={handleJoystickPointerMove}
+                onPointerUp={finishJoystickInteraction}
+                onPointerCancel={finishJoystickInteraction}
+                onLostPointerCapture={clearJoystickInteraction}
+                className={`relative h-[104px] w-[104px] touch-none select-none rounded-full border border-white/10
+                  bg-[radial-gradient(circle_at_30%_30%,rgba(148,163,184,0.22),rgba(71,85,105,0.35)_45%,rgba(2,6,23,0.96)_100%)]
+                  shadow-[inset_0_10px_22px_rgba(255,255,255,0.10),inset_0_-14px_24px_rgba(0,0,0,0.58),0_16px_24px_rgba(2,6,23,0.42)]
+                  ${joystickActive ? "ring-2 ring-sky-400/65" : ""}`}
+                title="Arraste para girar o mapa"
+                aria-label="Joystick de rotacao do mapa"
+              >
+                <div className="absolute left-1/2 top-1 -translate-x-1/2 text-[11px] font-semibold tracking-[0.16em] text-white/90">N</div>
+                <div className="absolute inset-[10px] rounded-full border border-white/12" />
+                <div className="absolute inset-[19px] rounded-full border border-white/10 bg-black/20" />
+
+                <button
+                  type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={resetBearing}
+                  className="absolute left-1/2 top-[14px] inline-flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-full bg-black/25 text-sky-300 hover:bg-white/10"
+                  title="Alinhar para norte"
+                  aria-label="Alinhar para norte"
+                >
+                  <FontAwesomeIcon icon={faChevronUp} className="h-3 w-3" />
+                </button>
+
+                <button
+                  type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => setBearingPreset(90)}
+                  className="absolute right-[14px] top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/25 text-sky-300 hover:bg-white/10"
+                  title="Virar para leste"
+                  aria-label="Virar para leste"
+                >
+                  <FontAwesomeIcon icon={faChevronRight} className="h-3 w-3" />
+                </button>
+
+                <button
+                  type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => setBearingPreset(180)}
+                  className="absolute bottom-[14px] left-1/2 inline-flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-full bg-black/25 text-sky-300 hover:bg-white/10"
+                  title="Virar para sul"
+                  aria-label="Virar para sul"
+                >
+                  <FontAwesomeIcon icon={faChevronDown} className="h-3 w-3" />
+                </button>
+
+                <button
+                  type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => setBearingPreset(-90)}
+                  className="absolute left-[14px] top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/25 text-sky-300 hover:bg-white/10"
+                  title="Virar para oeste"
+                  aria-label="Virar para oeste"
+                >
+                  <FontAwesomeIcon icon={faChevronLeft} className="h-3 w-3" />
+                </button>
+
+                <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/55" />
+                <div
+                  className="absolute left-1/2 top-1/2 h-8 w-[3px] -translate-x-1/2 -translate-y-full rounded-full bg-sky-300/30"
+                  style={{ transform: `translate(-50%, -100%) rotate(${heading}deg)` }}
+                />
+                <div
+                  className="absolute left-1/2 top-1/2 h-8 w-8 rounded-full border border-white/12
+                    bg-[radial-gradient(circle_at_30%_30%,#475569,#111827_60%,#020617)] shadow-[0_10px_18px_rgba(0,0,0,0.48)] transition-transform"
+                  style={{
+                    transform: `translate(calc(-50% + ${joystickVector.x}px), calc(-50% + ${joystickVector.y}px)) scale(${joystickActive ? 1.04 : 1})`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="absolute right-4 top-4 z-[1005] flex gap-2 pointer-events-none">
+        <button
+          onClick={() => setPanelOpen((value) => !value)}
+          className="pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-white/85 px-3 text-black shadow-lg hover:bg-white"
           title={panelOpen ? "Fechar painel" : "Abrir painel"}
         >
           <FontAwesomeIcon icon={faXmark} className={`h-4 w-4 ${panelOpen ? "" : "hidden"}`} />
           <FontAwesomeIcon icon={faBars} className={`h-4 w-4 ${panelOpen ? "hidden" : ""}`} />
           <span className="text-sm">{panelOpen ? "Fechar" : "Painel"}</span>
         </button>
+
         <button
-          onClick={fitCity}
-          className="pointer-events-auto inline-flex items-center gap-2 px-3 h-10 rounded-xl bg-white/85 text-black hover:bg-white shadow-lg"
+          onClick={() => fitCity()}
+          className="pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-white/85 px-3 text-black shadow-lg hover:bg-white"
           title="Enquadrar cidade"
         >
           <FontAwesomeIcon icon={faLocationCrosshairs} className="h-4 w-4" />
           <span className="text-sm">Cidade</span>
         </button>
+
         <button
           onClick={fitPins}
           disabled={filtered.length === 0}
-          className="pointer-events-auto inline-flex items-center gap-2 px-3 h-10 rounded-xl bg-white/85 text-black hover:bg-white shadow-lg disabled:opacity-50"
+          className="pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-white/85 px-3 text-black shadow-lg hover:bg-white disabled:opacity-50"
           title="Enquadrar pinos filtrados"
         >
           <FontAwesomeIcon icon={faLocationCrosshairs} className="h-4 w-4" />
           <span className="text-sm">Pinos</span>
         </button>
+
         <select
           value={basemap}
-          onChange={(e) => setBasemap(e.target.value as BasemapKey)}
-          className="pointer-events-auto h-10 rounded-xl bg-white/85 text-black hover:bg-white shadow-lg px-2 text-sm"
+          onChange={(event) => setBasemap(event.target.value as BasemapKey)}
+          className="pointer-events-auto h-10 rounded-xl bg-white/85 px-2 text-sm text-black shadow-lg hover:bg-white"
           title="Mapa base"
           aria-label="Selecionar mapa base"
         >
-          <option value="sat">Satélite</option>
+          <option value="sat">Satelite</option>
           <option value="light">Claro (OSM)</option>
         </select>
       </div>
 
-      {/* PAINEL LATERAL (direito) */}
       <div
-        className={`absolute z-[1004] top-16 right-4 w-[320px] max-h-[70vh] overflow-hidden rounded-2xl
-          backdrop-blur-md bg-white/20 dark:bg-black/30 ring-1 ring-white/30 shadow-xl transition-all
-          ${panelOpen ? "opacity-100 translate-x-0 pointer-events-auto" : "opacity-0 translate-x-4 pointer-events-none"}`}
+        className={`absolute right-4 top-16 z-[1004] max-h-[70vh] w-[320px] overflow-hidden rounded-2xl
+          bg-white/20 shadow-xl ring-1 ring-white/30 backdrop-blur-md transition-all dark:bg-black/30
+          ${panelOpen ? "pointer-events-auto translate-x-0 opacity-100" : "pointer-events-none translate-x-4 opacity-0"}`}
       >
-        <div className="p-3 space-y-3 overflow-y-auto">
-          {/* Filtros rápidos */}
+        <div className="space-y-3 overflow-y-auto p-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <input
-                className="pl-8 pr-3 py-2 w-full rounded-lg bg-white/85 text-black placeholder-black/60 outline-none focus:ring-2 focus:ring-emerald-400"
-                placeholder="Buscar por nome/rede…"
+                className="w-full rounded-lg bg-white/85 py-2 pl-8 pr-3 text-black placeholder-black/60 outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="Buscar por nome/rede..."
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(event) => setQ(event.target.value)}
                 aria-label="Buscar por nome ou rede"
               />
               <FontAwesomeIcon
                 icon={faMagnifyingGlass}
-                className="h-4 w-4 text-black/70 absolute left-2 top-1/2 -translate-y-1/2"
+                className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-black/70"
               />
             </div>
+
             <button
               onClick={load}
-              className="px-3 h-10 rounded-lg bg-white/85 text-black hover:bg-white"
+              className="h-10 rounded-lg bg-white/85 px-3 text-black hover:bg-white"
               title="Recarregar"
               aria-label="Recarregar"
             >
@@ -458,23 +833,25 @@ export default function MapClient() {
           <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => setStatusFilter("ALL")}
-              className={`px-2 py-2 rounded-lg text-sm ${
+              className={`rounded-lg px-2 py-2 text-sm ${
                 statusFilter === "ALL" ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
               }`}
             >
               Todos
             </button>
+
             <button
               onClick={() => setStatusFilter("UP")}
-              className={`px-2 py-2 rounded-lg text-sm flex items-center justify-center gap-1 ${
+              className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm ${
                 statusFilter === "UP" ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
               }`}
             >
               <FontAwesomeIcon icon={faCircleCheck} /> UP
             </button>
+
             <button
               onClick={() => setStatusFilter("DOWN")}
-              className={`px-2 py-2 rounded-lg text-sm flex items-center justify-center gap-1 ${
+              className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm ${
                 statusFilter === "DOWN" ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
               }`}
             >
@@ -482,128 +859,67 @@ export default function MapClient() {
             </button>
           </div>
 
-          {/* Totais */}
           <div className="grid grid-cols-3 gap-2 text-center text-sm">
             <div className="rounded-xl bg-white/25 p-2">
               <div className="text-xs opacity-80">Pins</div>
               <div className="text-lg font-semibold">{totals.total}</div>
             </div>
+
             <div className="rounded-xl bg-white/25 p-2">
               <div className="text-xs opacity-80">UP</div>
               <div className="text-lg font-semibold text-emerald-300">{totals.up}</div>
             </div>
+
             <div className="rounded-xl bg-white/25 p-2">
               <div className="text-xs opacity-80">DOWN</div>
               <div className="text-lg font-semibold text-red-300">{totals.down}</div>
             </div>
           </div>
 
-          {/* Filtro por Rede */}
           <div className="space-y-1">
             <div className="text-xs opacity-80">Redes ({networks.length})</div>
+
             <div className="max-h-[26vh] overflow-auto pr-1">
               <button
                 onClick={() => setNetFilter("")}
-                className={`w-full text-left px-2 py-1 rounded-lg text-sm mb-1 ${
+                className={`mb-1 w-full rounded-lg px-2 py-1 text-left text-sm ${
                   netFilter === "" ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
                 }`}
               >
                 Todas as redes
               </button>
-              {networks.map((n) => {
-                const count = netCounts.get(n) ?? 0;
+
+              {networks.map((network) => {
+                const count = netCounts.get(network) ?? 0;
+
                 return (
                   <button
-                    key={n}
-                    onClick={() => setNetFilter((prev) => (prev === n ? "" : n))}
-                    className={`w-full text-left px-2 py-1 rounded-lg text-sm mb-1 ${
-                      netFilter === n ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
+                    key={network}
+                    onClick={() => setNetFilter((prev) => (prev === network ? "" : network))}
+                    className={`mb-1 w-full rounded-lg px-2 py-1 text-left text-sm ${
+                      netFilter === network ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
                     }`}
-                    title={n}
+                    title={network}
                   >
-                    <span className="line-clamp-1">{n}</span>
+                    <span className="line-clamp-1">{network}</span>
                     <span className="float-right opacity-70">{count}</span>
                   </button>
                 );
               })}
             </div>
+
             <button
               onClick={clearFilters}
-              className="w-full mt-2 px-3 py-2 rounded-lg bg-white/85 text-black hover:bg-white text-sm flex items-center gap-2 justify-center"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-white/85 px-3 py-2 text-sm text-black hover:bg-white"
             >
               <FontAwesomeIcon icon={faBroom} /> Limpar filtros
             </button>
           </div>
 
-          {/* Rodapé do painel */}
-          <div className="text-xs opacity-80 text-center">
-            {lastLoadedAt ? `Atualizado: ${lastLoadedAt}` : "—"}
-          </div>
+          <div className="text-center text-xs opacity-80">{lastLoadedAt ? `Atualizado: ${lastLoadedAt}` : "-"}</div>
         </div>
       </div>
 
-      {/* MAPA */}
-      <MapContainer
-        center={CITY_CENTER}
-        zoom={12}
-        className="h-full w-full"
-        zoomControl={false}
-        scrollWheelZoom
-        preferCanvas
-        minZoom={10}
-        maxZoom={19}
-        worldCopyJump={false}
-        maxBounds={CITY_BOUNDS}
-        maxBoundsViscosity={1.0}
-        doubleClickZoom
-      >
-        {/* Zoom em posição que não conflita com o FAB (FAB está bottom-left) */}
-        <ZoomControl position="bottomright" />
-
-        {/* Mapa base */}
-        {basemap === "sat" ? (
-          <TileLayer url={TILE_SAT.url} attribution={TILE_SAT.attribution} />
-        ) : (
-          <TileLayer url={TILE_LIGHT.url} attribution={TILE_LIGHT.attribution} />
-        )}
-
-        {/* Inicialização segura da instância do mapa */}
-        <MapInit onInit={onMapCreated} />
-        <FsResize />
-        <ClickPicker enabled={openModal} setLat={setLat} setLon={setLon} />
-
-        {!loading &&
-          filtered.map((a) => (
-            <Marker key={a.id} position={[a.lat, a.lon]} icon={a.status === "DOWN" ? iconDown : iconUp}>
-              <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
-                {a.name}
-              </Tooltip>
-              <Popup>
-                <div className="space-y-1 text-sm">
-                  <div className="font-semibold">{a.name}</div>
-                  {a.networkName && <div className="opacity-80">{a.networkName}</div>}
-                  <div className="opacity-80">
-                    {a.lat.toFixed(5)}, {a.lon.toFixed(5)}
-                  </div>
-                  {a.description && <div className="opacity-80">{a.description}</div>}
-                  <div>
-                    Status:{" "}
-                    <span
-                      className={a.status === "DOWN" ? "text-red-500 font-medium" : "text-emerald-400 font-medium"}
-                    >
-                      {a.status}
-                    </span>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-
-        {/* Pré-visualização do pin enquanto o modal está aberto */}
-        {openModal && tempPos && <Marker position={tempPos} icon={iconUp} />}
-      </MapContainer>
-
-      {/* FAB: Adicionar */}
       {canManage && (
         <div className="pointer-events-none absolute bottom-6 left-6 z-[1003]">
           <button
@@ -617,74 +933,79 @@ export default function MapClient() {
         </div>
       )}
 
-      {/* Modal Nova Antena */}
       {canManage && openModal && (
         <div
-          className="absolute inset-0 z-[1006] grid place-items-center bg-black/50 backdrop-blur-sm p-4"
+          className="absolute inset-0 z-[1006] grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-2xl bg-white/90 dark:bg-neutral-900 text-black dark:text-white shadow-2xl ring-1 ring-black/10 dark:ring-white/10">
-            <div className="px-5 py-4 border-b border-black/10 dark:border-white/10 flex items-center justify-between">
+          <div className="w-full max-w-md rounded-2xl bg-white/90 text-black shadow-2xl ring-1 ring-black/10 dark:bg-neutral-900 dark:text-white dark:ring-white/10">
+            <div className="flex items-center justify-between border-b border-black/10 px-5 py-4 dark:border-white/10">
               <h3 className="text-lg font-semibold">Nova Antena</h3>
               <button
                 onClick={() => setOpenModal(false)}
-                className="px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"
+                className="rounded-lg px-2 py-1 hover:bg-black/5 dark:hover:bg-white/10"
                 aria-label="Fechar"
               >
-                ✕
+                x
               </button>
             </div>
-            <form className="p-5 space-y-3" onSubmit={handleCreate}>
+
+            <form className="space-y-3 p-5" onSubmit={handleCreate}>
               <input
-                className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400"
+                className="w-full rounded-lg border border-black/10 bg-white/70 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/5"
                 placeholder="Nome"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(event) => setName(event.target.value)}
                 required
               />
+
               <div className="grid grid-cols-2 gap-3">
                 <input
-                  className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400"
+                  className="w-full rounded-lg border border-black/10 bg-white/70 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/5"
                   placeholder="Latitude"
                   value={lat}
-                  onChange={(e) => setLat(e.target.value)}
+                  onChange={(event) => setLat(event.target.value)}
                   required
                 />
+
                 <input
-                  className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400"
+                  className="w-full rounded-lg border border-black/10 bg-white/70 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/5"
                   placeholder="Longitude"
                   value={lon}
-                  onChange={(e) => setLon(e.target.value)}
+                  onChange={(event) => setLon(event.target.value)}
                   required
                 />
               </div>
+
               <textarea
-                className="w-full px-3 py-2 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 outline-none focus:ring-2 focus:ring-emerald-400"
-                placeholder="Descrição (opcional)"
+                className="w-full rounded-lg border border-black/10 bg-white/70 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/5"
+                placeholder="Descricao (opcional)"
                 rows={3}
                 value={desc}
-                onChange={(e) => setDesc(e.target.value)}
+                onChange={(event) => setDesc(event.target.value)}
               />
+
               {err && (
-                <div className="text-xs text-red-600 bg-red-600/10 border border-red-600/30 rounded p-2">
-                  {err}
-                </div>
+                <div className="rounded border border-red-600/30 bg-red-600/10 p-2 text-xs text-red-600">{err}</div>
               )}
-              <div className="pt-1 flex items-center justify-between">
+
+              <div className="flex items-center justify-between pt-1">
                 <p className="text-xs opacity-80">Dica: clique no mapa com o modal aberto para preencher Lat/Lon.</p>
+
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setOpenModal(false)}
-                    className="px-4 h-10 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
+                    className="h-10 rounded-lg bg-black/5 px-4 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20"
                   >
                     Cancelar
                   </button>
+
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-4 h-10 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60"
+                    className="h-10 rounded-lg bg-emerald-600 px-4 text-white hover:bg-emerald-500 disabled:opacity-60"
                   >
                     {saving ? "Salvando..." : "Salvar"}
                   </button>

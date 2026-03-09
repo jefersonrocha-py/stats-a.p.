@@ -38,6 +38,11 @@ export default function LoginPage() {
     } catch (err: any) {
       const message = String(err?.message || "");
       if (message.includes("INVALID_CREDENTIALS")) setError("Credenciais invalidas.");
+      else if (message.includes("ORIGIN_MISMATCH") || message.includes("ORIGIN_REQUIRED")) {
+        setError("Falha de origem da requisicao. Recarregue a pagina e tente novamente.");
+      } else if (message.includes("CSRF_INVALID")) {
+        setError("Sessao de seguranca invalida. Recarregue a pagina e tente novamente.");
+      }
       else setError("Nao foi possivel entrar agora.");
     } finally {
       setBusy(false);

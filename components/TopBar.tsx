@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useThemeStore } from "@store/theme";
+import { buildApiHeaders } from "@services/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faRightFromBracket,
@@ -92,7 +93,10 @@ export default function TopBar() {
   // ===== Logout
   async function handleLogout() {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: buildApiHeaders(undefined, "POST"),
+      });
     } catch {}
     router.push("/login");
   }

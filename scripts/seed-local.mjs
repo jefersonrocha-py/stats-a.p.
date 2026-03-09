@@ -14,7 +14,7 @@ const name = process.env.SUPERADMIN_NAME || "Super Admin";
       [email]
     );
     const exists = rows[0];
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
 
     if (exists?.id) {
       await connection.execute(

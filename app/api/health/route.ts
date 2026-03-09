@@ -7,9 +7,12 @@ import { pingDb } from "@lib/mysql";
 export async function GET() {
   try {
     await pingDb();
-    return NextResponse.json({ ok: true, app: "up", db: "up" });
+    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("GET /api/health error:", e);
-    return NextResponse.json({ ok: false, app: "up", db: "down" }, { status: 503 });
+    return NextResponse.json(
+      { ok: false },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }

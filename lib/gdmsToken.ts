@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { RowDataPacket } from "mysql2/promise";
 import { dbExecute, dbQueryOne } from "@lib/mysql";
 
@@ -11,6 +13,26 @@ type TokenRow = RowDataPacket & {
 };
 
 const SKEW_MS = 60_000;
+const OAUTH_TIMEOUT_MS = 15_000;
+
+function getRequiredEnv(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+function getValidatedUrl(name: string) {
+  const raw = getRequiredEnv(name);
+  const url = new URL(raw);
+
+  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
+    throw new Error(`${name} must use HTTPS in production.`);
+  }
+
+  return url.toString();
+}
 
 function now() {
   return Date.now();
@@ -37,12 +59,9 @@ async function saveToDb(tok: TokenRecord): Promise<void> {
 }
 
 async function fetchClientCredentialsToken(): Promise<TokenRecord> {
-  const url = process.env.GDMS_OAUTH_URL!;
-  const clientId = process.env.GDMS_CLIENT_ID!;
-  const clientSecret = process.env.GDMS_CLIENT_SECRET!;
-  if (!url || !clientId || !clientSecret) {
-    throw new Error("Configure GDMS_OAUTH_URL, GDMS_CLIENT_ID e GDMS_CLIENT_SECRET.");
-  }
+  const url = getValidatedUrl("GDMS_OAUTH_URL");
+  const clientId = getRequiredEnv("GDMS_CLIENT_ID");
+  const clientSecret = getRequiredEnv("GDMS_CLIENT_SECRET");
 
   const body = new URLSearchParams();
   body.set("grant_type", "client_credentials");
@@ -54,10 +73,11 @@ async function fetchClientCredentialsToken(): Promise<TokenRecord> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
     cache: "no-store",
+    redirect: "error",
+    signal: AbortSignal.timeout(OAUTH_TIMEOUT_MS),
   });
   if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`OAuth token failed ${res.status}: ${t}`);
+    throw new Error(`OAuth token request failed with status ${res.status}.`);
   }
 
   const json = await res.json();

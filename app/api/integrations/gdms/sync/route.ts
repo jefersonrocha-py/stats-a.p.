@@ -2,6 +2,7 @@ import type { RowDataPacket } from "mysql2/promise";
 import { NextResponse } from "next/server";
 import { requireRequestAuthOrInternal } from "@lib/auth";
 import { dbExecute, dbQueryOne, withTransaction } from "@lib/mysql";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "@lib/rateLimit";
 import { listAPsByNetwork, listNetworks } from "@services/gdms";
 
 export const runtime = "nodejs";
@@ -23,6 +24,15 @@ export async function POST(req: Request) {
   try {
     const auth = await requireRequestAuthOrInternal(req, ["ADMIN", "SUPERADMIN"]);
     if ("response" in auth) return auth.response;
+
+    const rateLimit = checkRateLimit(req, "gdms-sync", {
+      max: 2,
+      windowMs: 15 * 60_000,
+      key: "user" in auth ? auth.user.sub : `internal:${getClientIp(req)}`,
+    });
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
 
     const { searchParams } = new URL(req.url);
     const statusOnly = searchParams.get("mode") === "status";
@@ -188,7 +198,8 @@ export async function POST(req: Request) {
       errors: errors.slice(0, 50),
       at: now.toISOString(),
     });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });
+  } catch (e) {
+    console.error("POST /api/integrations/gdms/sync error:", e);
+    return NextResponse.json({ ok: false, error: "GDMS_SYNC_FAILED" }, { status: 500 });
   }
 }

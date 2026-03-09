@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { requireRequestAuth } from "@lib/auth";
 import { mapAntennaRow } from "@lib/dbMappers";
 import { dbExecute, dbQueryOne } from "@lib/mysql";
+import { checkRateLimit, rateLimitResponse } from "@lib/rateLimit";
 import { emit } from "@lib/sse";
 
 type AntennaRow = RowDataPacket & {
@@ -40,15 +41,34 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     const auth = await requireRequestAuth(req, ["ADMIN", "SUPERADMIN"]);
     if ("response" in auth) return auth.response;
 
+    const rateLimit = checkRateLimit(req, "antenna-coords-update", {
+      max: 180,
+      windowMs: 15 * 60_000,
+      key: auth.user.sub,
+    });
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
+
     const idNum = Number(ctx.params.id);
     if (!Number.isFinite(idNum)) {
       return NextResponse.json({ ok: false, error: "INVALID_ID" }, { status: 400 });
     }
 
     const json = await req.json().catch(() => ({}));
+    if (typeof json.lat === "string" && json.lat.trim().length > 32) {
+      return NextResponse.json({ ok: false, error: "INVALID_LAT" }, { status: 400 });
+    }
+    if (typeof json.lon === "string" && json.lon.trim().length > 32) {
+      return NextResponse.json({ ok: false, error: "INVALID_LON" }, { status: 400 });
+    }
+
     const lat = toNum(json.lat);
     const lon = toNum(json.lon);
     const description = typeof json.description === "string" ? json.description.trim() : undefined;
+    if (description !== undefined && description.length > 500) {
+      return NextResponse.json({ ok: false, error: "INVALID_DESCRIPTION" }, { status: 400 });
+    }
 
     const assignments: string[] = [];
     const values: Array<number | string | Date> = [];

@@ -1,3 +1,5 @@
+import "server-only";
+
 // services/gdms.ts
 import crypto from "crypto";
 import { getAccessToken } from "@lib/gdmsToken";
@@ -10,12 +12,28 @@ type GdmsEnv = {
   show: "all" | "1" | "0";
 };
 
+const GDMS_TIMEOUT_MS = 20_000;
+
+function parseBaseUrl(raw: string) {
+  const url = new URL(raw);
+  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
+    throw new Error("GDMS_BASE must use HTTPS in production.");
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
 function env(): GdmsEnv {
-  const base = process.env.GDMS_BASE ?? "https://www.gwn.cloud";
+  const base = parseBaseUrl(process.env.GDMS_BASE ?? "https://www.gwn.cloud");
   const appId = process.env.GDMS_CLIENT_ID ?? process.env.GDMS_APP_ID ?? "";
   const secret = process.env.GDMS_CLIENT_SECRET ?? process.env.GDMS_SECRET ?? "";
-  const pageSize = Number(process.env.GDMS_PAGE_SIZE ?? 200);
-  const show = (process.env.GDMS_SHOW as GdmsEnv["show"]) ?? "all";
+  const rawPageSize = Number(process.env.GDMS_PAGE_SIZE ?? 200);
+  const pageSize =
+    Number.isFinite(rawPageSize) && rawPageSize >= 1 && rawPageSize <= 500
+      ? Math.floor(rawPageSize)
+      : 200;
+  const rawShow = process.env.GDMS_SHOW;
+  const show: GdmsEnv["show"] =
+    rawShow === "1" || rawShow === "0" || rawShow === "all" ? rawShow : "all";
   if (!appId || !secret) throw new Error("Configure GDMS_CLIENT_ID e GDMS_CLIENT_SECRET (ou GDMS_APP_ID/GDMS_SECRET).");
   return { base, appId, secret, pageSize, show };
 }
@@ -41,14 +59,21 @@ async function postJson<T>(path: string, bodyObj: any): Promise<T> {
   const signature = buildSignature({ accessToken, appId, secret, timestamp: ts, body });
 
   const url = `${base}${path}?access_token=${accessToken}&appID=${appId}&timestamp=${ts}&signature=${signature}`;
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, cache: "no-store" });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    cache: "no-store",
+    redirect: "error",
+    signal: AbortSignal.timeout(GDMS_TIMEOUT_MS),
+  });
 
   let json: any;
   try { json = await res.json(); } catch { json = { err: await res.text() }; }
 
-  if (!res.ok) throw new Error(`GDMS ${path} ${res.status}: ${JSON.stringify(json).slice(0, 500)}`);
+  if (!res.ok) throw new Error(`GDMS ${path} failed with status ${res.status}.`);
   if (json?.retCode && String(json.retCode) !== "0") {
-    throw new Error(`GDMS ${path} retCode=${json.retCode} msg=${json.msg ?? ""}`);
+    throw new Error(`GDMS ${path} rejected the request with retCode=${json.retCode}.`);
   }
   return json as T;
 }

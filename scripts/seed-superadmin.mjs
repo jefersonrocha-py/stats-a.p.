@@ -29,7 +29,7 @@ if (!email || !password) {
       }
       console.log("Superadmin ja existe:", email);
     } else {
-      const passwordHash = await bcrypt.hash(password, 10);
+      const passwordHash = await bcrypt.hash(password, 12);
       await connection.execute(
         "INSERT INTO `User` (`name`, `email`, `passwordHash`, `role`, `isBlocked`, `createdAt`) VALUES (?, ?, ?, 'SUPERADMIN', 0, ?)",
         [name, email, passwordHash, new Date()]

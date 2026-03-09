@@ -68,13 +68,41 @@ export interface AntennaNetworksResponse {
   items: string[];
 }
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function readCookie(name: string) {
+  if (typeof document === "undefined") return null;
+
+  const value = document.cookie
+    .split(/;\s*/)
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(`${name}=`.length);
+
+  return value ? decodeURIComponent(value) : null;
+}
+
+export function buildApiHeaders(headers?: HeadersInit, method = "GET") {
+  const normalizedMethod = method.toUpperCase();
+  const nextHeaders = new Headers(headers);
+
+  if (!nextHeaders.has("Content-Type") && normalizedMethod !== "GET" && normalizedMethod !== "HEAD") {
+    nextHeaders.set("Content-Type", "application/json");
+  }
+
+  if (UNSAFE_METHODS.has(normalizedMethod)) {
+    const csrf = readCookie("csrf");
+    if (csrf) nextHeaders.set("x-csrf-token", csrf);
+    nextHeaders.set("x-requested-with", "fetch");
+  }
+
+  return nextHeaders;
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
   const res = await fetch(path, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
+    headers: buildApiHeaders(init?.headers, method),
     cache: "no-store",
   });
 

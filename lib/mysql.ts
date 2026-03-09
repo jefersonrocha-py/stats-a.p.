@@ -1,3 +1,5 @@
+import "server-only";
+
 import mysql from "mysql2/promise";
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
@@ -25,6 +27,10 @@ function createMysqlPool() {
     throw new Error("DATABASE_URL must include a database name.");
   }
 
+  const poolSize = Number(process.env.MYSQL_POOL_SIZE ?? 10);
+  const connectionLimit =
+    Number.isFinite(poolSize) && poolSize >= 1 && poolSize <= 50 ? Math.floor(poolSize) : 10;
+
   return mysql.createPool({
     host: url.hostname,
     port: url.port ? Number(url.port) : 3306,
@@ -32,12 +38,14 @@ function createMysqlPool() {
     password: decodeURIComponent(url.password),
     database,
     waitForConnections: true,
-    connectionLimit: Number(process.env.MYSQL_POOL_SIZE ?? 10),
-    queueLimit: 0,
+    connectionLimit,
+    queueLimit: 100,
     charset: "utf8mb4",
     timezone: "Z",
     decimalNumbers: true,
     enableKeepAlive: true,
+    connectTimeout: 10_000,
+    multipleStatements: false,
   });
 }
 

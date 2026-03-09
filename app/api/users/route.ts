@@ -8,12 +8,14 @@ import { requireRequestAuth } from "@lib/auth";
 import { mapUserRow } from "@lib/dbMappers";
 import { mapDbError } from "@lib/dbErrors";
 import { dbExecute, dbQuery, dbQueryOne } from "@lib/mysql";
+import { checkRateLimit, rateLimitResponse } from "@lib/rateLimit";
+import { strongPasswordSchema } from "@lib/validatorsAuth";
 import { z } from "zod";
 
 const createUserSchema = z.object({
   name: z.string().min(2).max(100),
   email: z.string().email().max(200),
-  password: z.string().min(8).max(100),
+  password: strongPasswordSchema,
   role: z.enum(["USER", "ADMIN", "SUPERADMIN"]).optional().default("USER"),
 });
 
@@ -47,6 +49,15 @@ export async function POST(req: Request) {
     const auth = await requireRequestAuth(req, ["SUPERADMIN"]);
     if ("response" in auth) return auth.response;
 
+    const rateLimit = checkRateLimit(req, "admin-create-user", {
+      max: 20,
+      windowMs: 60 * 60_000,
+      key: auth.user.sub,
+    });
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
+
     const json = await req.json().catch(() => ({}));
     const parsed = createUserSchema.safeParse(json);
     if (!parsed.success) {
@@ -67,7 +78,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "EMAIL_TAKEN" }, { status: 409 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
     const result = await dbExecute(
       "INSERT INTO `User` (`name`, `email`, `passwordHash`, `role`, `isBlocked`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?)",
       [name, normalizedEmail, passwordHash, role, new Date()]

@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import AntennaToolbar from "@components/AntennaToolbar";
 import PaginationControls from "@components/PaginationControls";
-import { api, type Antenna, type AntennaListResponse, type AntennaNetworksResponse } from "@services/api";
+import {
+  api,
+  buildApiHeaders,
+  type Antenna,
+  type AntennaListResponse,
+  type AntennaNetworksResponse,
+} from "@services/api";
 import { connectSSE } from "@services/sseClient";
 
 type DraftRow = {
@@ -160,7 +166,10 @@ export default function SettingsPage() {
   async function doSync() {
     setSyncing(true);
     try {
-      const response = await fetch("/api/integrations/gdms/sync", { method: "POST" });
+      const response = await fetch("/api/integrations/gdms/sync", {
+        method: "POST",
+        headers: buildApiHeaders(undefined, "POST"),
+      });
       if (!response.ok) {
         const json = await response.json().catch(() => ({}));
         alert(`Sync falhou: ${json?.error ?? response.statusText}`);
@@ -178,7 +187,7 @@ export default function SettingsPage() {
     const row = draft[id] ?? { lat: "", lon: "", description: "" };
     const response = await fetch(`/api/antennas/${id}/coords`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: buildApiHeaders(undefined, "PATCH"),
       body: JSON.stringify({
         lat: row.lat,
         lon: row.lon,

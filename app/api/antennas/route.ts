@@ -7,6 +7,7 @@ import { requireRequestAuth } from "@lib/auth";
 import { mapAntennaRow } from "@lib/dbMappers";
 import { mapDbError } from "@lib/dbErrors";
 import { dbExecute, dbQuery, dbQueryOne, withTransaction } from "@lib/mysql";
+import { checkRateLimit, rateLimitResponse } from "@lib/rateLimit";
 import { emit } from "@lib/sse";
 import { antennaCreateSchema } from "@lib/validators";
 
@@ -104,6 +105,15 @@ export async function POST(req: Request) {
   try {
     const auth = await requireRequestAuth(req, ["ADMIN", "SUPERADMIN"]);
     if ("response" in auth) return auth.response;
+
+    const rateLimit = checkRateLimit(req, "antenna-create", {
+      max: 60,
+      windowMs: 15 * 60_000,
+      key: auth.user.sub,
+    });
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
 
     const json = await req.json().catch(() => ({}));
     const parsed = antennaCreateSchema.safeParse(json);

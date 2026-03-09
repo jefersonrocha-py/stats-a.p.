@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { buildApiHeaders } from "@services/api";
 
 type User = {
   id: number;
@@ -47,7 +48,7 @@ export default function AdminPage() {
     try {
       const r = await fetch("/api/users", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: buildApiHeaders(undefined, "POST"),
         body: JSON.stringify(form),
       });
       const j = await r.json().catch(() => ({}));
