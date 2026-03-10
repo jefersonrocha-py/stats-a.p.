@@ -7,12 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 /** Detecta dark mode via classe 'dark' e/ou prefers-color-scheme */
 function useIsDark() {
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    const hasClass = document.documentElement.classList.contains("dark");
-    const media = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
-    return hasClass || media;
-  });
+  const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

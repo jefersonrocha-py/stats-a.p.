@@ -48,6 +48,10 @@ type Antenna = {
 
 type Role = "SUPERADMIN" | "ADMIN" | "USER";
 type BasemapKey = "sat" | "light";
+type BasemapDefinition = {
+  tiles: string[];
+  attribution: string;
+};
 
 const CITY_CENTER: LngLatLike = [-46.955, -22.431];
 const CITY_BOUNDS: LngLatBoundsLike = [
@@ -55,14 +59,20 @@ const CITY_BOUNDS: LngLatBoundsLike = [
   [-46.86, -22.36],
 ];
 
-const TILE_SAT = {
-  url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+const TILE_SAT: BasemapDefinition = {
+  tiles: [
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  ],
   attribution:
     '&copy; <a href="https://www.esri.com/">Esri</a> - Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
 };
 
-const TILE_LIGHT = {
-  url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+const TILE_LIGHT: BasemapDefinition = {
+  tiles: [
+    "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  ],
   attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
 };
 
@@ -151,7 +161,7 @@ function buildMapStyle(basemap: BasemapKey): StyleSpecification {
     sources: {
       basemap: {
         type: "raster",
-        tiles: [base.url],
+        tiles: base.tiles,
         tileSize: 256,
         attribution: base.attribution,
         maxzoom: 19,
@@ -196,6 +206,7 @@ export default function MapClient() {
   const [basemap, setBasemap] = useState<BasemapKey>("sat");
   const [joystickActive, setJoystickActive] = useState(false);
   const [joystickOpen, setJoystickOpen] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const canManage = role === "ADMIN" || role === "SUPERADMIN";
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -327,12 +338,33 @@ export default function MapClient() {
       syncBearing();
       fitCity(false);
     };
+    const handleMapError = (event: { error?: Error; sourceId?: string }) => {
+      const message = String(event?.error?.message || "");
+      if (!message) return;
+
+      const isBasemapIssue =
+        event?.sourceId === "basemap" ||
+        message.includes("server.arcgisonline.com") ||
+        message.includes("tile.openstreetmap.org");
+
+      if (!isBasemapIssue) return;
+
+      if (appliedBasemapRef.current === "sat") {
+        appliedBasemapRef.current = "light";
+        setBasemap("light");
+        setMapError("Camada satelite indisponivel no momento. Mapa alterado para OSM.");
+        return;
+      }
+
+      setMapError("Falha ao carregar o mapa base. Tente recarregar.");
+    };
 
     const handleResize = () => map.resize();
     const resizeObserver = new ResizeObserver(handleResize);
 
     map.once("load", handleInitialLoad);
     map.on("rotate", syncBearing);
+    map.on("error", handleMapError);
 
     resizeObserver.observe(container);
     window.addEventListener("resize", handleResize);
@@ -343,6 +375,7 @@ export default function MapClient() {
       window.removeEventListener("resize", handleResize);
       document.removeEventListener("fullscreenchange", handleResize);
       map.off("rotate", syncBearing);
+      map.off("error", handleMapError);
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
       setMapReady(false);
@@ -356,6 +389,7 @@ export default function MapClient() {
     if (!map || !mapReady || appliedBasemapRef.current === basemap) return;
 
     appliedBasemapRef.current = basemap;
+    setMapError(null);
     map.setStyle(buildMapStyle(basemap));
   }, [basemap, mapReady]);
 
@@ -917,6 +951,12 @@ export default function MapClient() {
           </div>
 
           <div className="text-center text-xs opacity-80">{lastLoadedAt ? `Atualizado: ${lastLoadedAt}` : "-"}</div>
+
+          {mapError && (
+            <div className="rounded-lg border border-amber-400/40 bg-amber-500/12 px-3 py-2 text-xs text-amber-100">
+              {mapError}
+            </div>
+          )}
         </div>
       </div>
 

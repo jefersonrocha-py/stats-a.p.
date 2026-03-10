@@ -16,7 +16,19 @@ function isPublic(pathname: string) {
 function buildContentSecurityPolicy() {
   const isDev = process.env.NODE_ENV !== "production";
   const scriptSrc = ["'self'", "'unsafe-inline'"];
-  const connectSrc = ["'self'"];
+  const connectSrc = [
+    "'self'",
+    "https://server.arcgisonline.com",
+    "https://*.tile.openstreetmap.org",
+  ];
+  const imgSrc = [
+    "'self'",
+    "data:",
+    "blob:",
+    "https://etheriumtech.com.br",
+    "https://server.arcgisonline.com",
+    "https://*.tile.openstreetmap.org",
+  ];
 
   if (isDev) {
     scriptSrc.push("'unsafe-eval'");
@@ -34,7 +46,7 @@ function buildContentSecurityPolicy() {
     "frame-ancestors 'none'",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
-    "img-src 'self' data: blob: https://etheriumtech.com.br https://server.arcgisonline.com https://*.tile.openstreetmap.org",
+    `img-src ${imgSrc.join(" ")}`,
     `connect-src ${connectSrc.join(" ")}`,
   ];
 

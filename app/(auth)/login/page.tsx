@@ -78,7 +78,7 @@ export default function LoginPage() {
       >
         <div className="relative bg-gradient-to-b from-emerald-300/90 via-emerald-400/80 to-emerald-500/60 px-6 py-7 backdrop-blur sm:px-10">
           <div className="flex flex-col items-center gap-4 text-center">
-            <div className="rounded-[28px] border border-black/10 bg-white/92 px-4 py-3 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.45)] backdrop-blur">
+            <div className="rounded-[28px] border border-black/10 bg-[#F9F9F9] px-4 py-3 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.45)]">
               <Image
                 src={ETHERIUM_LOGO.src}
                 alt={ETHERIUM_LOGO.alt}

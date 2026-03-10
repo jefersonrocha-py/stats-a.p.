@@ -353,7 +353,7 @@ export default function Sidebar() {
   const [role, setRole] = useState<Role | null>(null);
   const [userName, setUserName] = useState("Usuario");
   const [stats, setStats] = useState({ total: 0, up: 0, down: 0 });
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -365,6 +365,7 @@ export default function Sidebar() {
   }, [setSidebarOpen]);
 
   useEffect(() => {
+    setNow(new Date());
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -433,21 +434,25 @@ export default function Sidebar() {
 
   const clockLabel = useMemo(
     () =>
-      new Intl.DateTimeFormat("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      }).format(now),
+      now
+        ? new Intl.DateTimeFormat("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }).format(now)
+        : "--:--:--",
     [now]
   );
 
   const dateLabel = useMemo(
     () =>
-      new Intl.DateTimeFormat("pt-BR", {
-        weekday: "short",
-        day: "2-digit",
-        month: "short",
-      }).format(now),
+      now
+        ? new Intl.DateTimeFormat("pt-BR", {
+            weekday: "short",
+            day: "2-digit",
+            month: "short",
+          }).format(now)
+        : "---, -- ---",
     [now]
   );
 
