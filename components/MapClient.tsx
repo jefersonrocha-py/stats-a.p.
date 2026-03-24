@@ -794,7 +794,7 @@ export default function MapClient() {
       <div className="absolute right-4 top-4 z-[1005] flex gap-2 pointer-events-none">
         <button
           onClick={() => setPanelOpen((value) => !value)}
-          className="pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-white/85 px-3 text-black shadow-lg hover:bg-white"
+          className="surface-button pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl px-3"
           title={panelOpen ? "Fechar painel" : "Abrir painel"}
         >
           <FontAwesomeIcon icon={faXmark} className={`h-4 w-4 ${panelOpen ? "" : "hidden"}`} />
@@ -804,7 +804,7 @@ export default function MapClient() {
 
         <button
           onClick={() => fitCity()}
-          className="pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-white/85 px-3 text-black shadow-lg hover:bg-white"
+          className="surface-button pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl px-3"
           title="Enquadrar cidade"
         >
           <FontAwesomeIcon icon={faLocationCrosshairs} className="h-4 w-4" />
@@ -814,7 +814,7 @@ export default function MapClient() {
         <button
           onClick={fitPins}
           disabled={filtered.length === 0}
-          className="pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-white/85 px-3 text-black shadow-lg hover:bg-white disabled:opacity-50"
+          className="surface-button pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl px-3 disabled:opacity-50"
           title="Enquadrar pinos filtrados"
         >
           <FontAwesomeIcon icon={faLocationCrosshairs} className="h-4 w-4" />
@@ -824,7 +824,7 @@ export default function MapClient() {
         <select
           value={basemap}
           onChange={(event) => setBasemap(event.target.value as BasemapKey)}
-          className="pointer-events-auto h-10 rounded-xl bg-white/85 px-2 text-sm text-black shadow-lg hover:bg-white"
+          className="surface-button pointer-events-auto h-10 rounded-xl px-2 text-sm"
           title="Mapa base"
           aria-label="Selecionar mapa base"
         >
@@ -834,15 +834,15 @@ export default function MapClient() {
       </div>
 
       <div
-        className={`absolute right-4 top-16 z-[1004] max-h-[70vh] w-[320px] overflow-hidden rounded-2xl
-          bg-white/20 shadow-xl ring-1 ring-white/30 backdrop-blur-md transition-all dark:bg-black/30
+        className={`surface-overlay absolute right-4 top-16 z-[1004] max-h-[70vh] w-[320px] overflow-hidden rounded-2xl
+          backdrop-blur-md transition-all
           ${panelOpen ? "pointer-events-auto translate-x-0 opacity-100" : "pointer-events-none translate-x-4 opacity-0"}`}
       >
         <div className="space-y-3 overflow-y-auto p-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <input
-                className="w-full rounded-lg bg-white/85 py-2 pl-8 pr-3 text-black placeholder-black/60 outline-none focus:ring-2 focus:ring-emerald-400"
+                className="surface-field w-full rounded-lg py-2 pl-8 pr-3 outline-none focus:ring-2 focus:ring-emerald-400"
                 placeholder="Buscar por nome/rede..."
                 value={q}
                 onChange={(event) => setQ(event.target.value)}
@@ -850,13 +850,13 @@ export default function MapClient() {
               />
               <FontAwesomeIcon
                 icon={faMagnifyingGlass}
-                className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-black/70"
+                className="text-muted absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2"
               />
             </div>
 
             <button
               onClick={load}
-              className="h-10 rounded-lg bg-white/85 px-3 text-black hover:bg-white"
+              className="surface-button h-10 rounded-lg px-3"
               title="Recarregar"
               aria-label="Recarregar"
             >
@@ -868,7 +868,7 @@ export default function MapClient() {
             <button
               onClick={() => setStatusFilter("ALL")}
               className={`rounded-lg px-2 py-2 text-sm ${
-                statusFilter === "ALL" ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
+                statusFilter === "ALL" ? "bg-emerald-600 text-white" : "surface-button"
               }`}
             >
               Todos
@@ -877,7 +877,7 @@ export default function MapClient() {
             <button
               onClick={() => setStatusFilter("UP")}
               className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm ${
-                statusFilter === "UP" ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
+                statusFilter === "UP" ? "bg-emerald-600 text-white" : "surface-button"
               }`}
             >
               <FontAwesomeIcon icon={faCircleCheck} /> UP
@@ -886,7 +886,7 @@ export default function MapClient() {
             <button
               onClick={() => setStatusFilter("DOWN")}
               className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm ${
-                statusFilter === "DOWN" ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
+                statusFilter === "DOWN" ? "bg-emerald-600 text-white" : "surface-button"
               }`}
             >
               <FontAwesomeIcon icon={faCircleXmark} /> DOWN
@@ -894,19 +894,19 @@ export default function MapClient() {
           </div>
 
           <div className="grid grid-cols-3 gap-2 text-center text-sm">
-            <div className="rounded-xl bg-white/25 p-2">
+            <div className="surface-soft rounded-xl p-2">
               <div className="text-xs opacity-80">Pins</div>
               <div className="text-lg font-semibold">{totals.total}</div>
             </div>
 
-            <div className="rounded-xl bg-white/25 p-2">
+            <div className="surface-soft rounded-xl p-2">
               <div className="text-xs opacity-80">UP</div>
-              <div className="text-lg font-semibold text-emerald-300">{totals.up}</div>
+              <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{totals.up}</div>
             </div>
 
-            <div className="rounded-xl bg-white/25 p-2">
+            <div className="surface-soft rounded-xl p-2">
               <div className="text-xs opacity-80">DOWN</div>
-              <div className="text-lg font-semibold text-red-300">{totals.down}</div>
+              <div className="text-lg font-semibold text-red-600 dark:text-red-300">{totals.down}</div>
             </div>
           </div>
 
@@ -917,7 +917,7 @@ export default function MapClient() {
               <button
                 onClick={() => setNetFilter("")}
                 className={`mb-1 w-full rounded-lg px-2 py-1 text-left text-sm ${
-                  netFilter === "" ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
+                  netFilter === "" ? "bg-emerald-600 text-white" : "surface-button"
                 }`}
               >
                 Todas as redes
@@ -931,7 +931,7 @@ export default function MapClient() {
                     key={network}
                     onClick={() => setNetFilter((prev) => (prev === network ? "" : network))}
                     className={`mb-1 w-full rounded-lg px-2 py-1 text-left text-sm ${
-                      netFilter === network ? "bg-emerald-600 text-white" : "bg-white/85 text-black hover:bg-white"
+                      netFilter === network ? "bg-emerald-600 text-white" : "surface-button"
                     }`}
                     title={network}
                   >
@@ -944,7 +944,7 @@ export default function MapClient() {
 
             <button
               onClick={clearFilters}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-white/85 px-3 py-2 text-sm text-black hover:bg-white"
+              className="surface-button mt-2 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm"
             >
               <FontAwesomeIcon icon={faBroom} /> Limpar filtros
             </button>
@@ -953,7 +953,7 @@ export default function MapClient() {
           <div className="text-center text-xs opacity-80">{lastLoadedAt ? `Atualizado: ${lastLoadedAt}` : "-"}</div>
 
           {mapError && (
-            <div className="rounded-lg border border-amber-400/40 bg-amber-500/12 px-3 py-2 text-xs text-amber-100">
+            <div className="rounded-lg border border-amber-400/40 bg-amber-500/12 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
               {mapError}
             </div>
           )}
@@ -979,12 +979,12 @@ export default function MapClient() {
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-2xl bg-white/90 text-black shadow-2xl ring-1 ring-black/10 dark:bg-neutral-900 dark:text-white dark:ring-white/10">
+          <div className="surface-overlay w-full max-w-md rounded-2xl">
             <div className="flex items-center justify-between border-b border-black/10 px-5 py-4 dark:border-white/10">
               <h3 className="text-lg font-semibold">Nova Antena</h3>
               <button
                 onClick={() => setOpenModal(false)}
-                className="rounded-lg px-2 py-1 hover:bg-black/5 dark:hover:bg-white/10"
+                className="surface-soft-hover rounded-lg px-2 py-1"
                 aria-label="Fechar"
               >
                 x
@@ -993,7 +993,7 @@ export default function MapClient() {
 
             <form className="space-y-3 p-5" onSubmit={handleCreate}>
               <input
-                className="w-full rounded-lg border border-black/10 bg-white/70 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/5"
+                className="surface-field w-full rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400"
                 placeholder="Nome"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -1002,7 +1002,7 @@ export default function MapClient() {
 
               <div className="grid grid-cols-2 gap-3">
                 <input
-                  className="w-full rounded-lg border border-black/10 bg-white/70 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/5"
+                  className="surface-field w-full rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400"
                   placeholder="Latitude"
                   value={lat}
                   onChange={(event) => setLat(event.target.value)}
@@ -1010,7 +1010,7 @@ export default function MapClient() {
                 />
 
                 <input
-                  className="w-full rounded-lg border border-black/10 bg-white/70 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/5"
+                  className="surface-field w-full rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400"
                   placeholder="Longitude"
                   value={lon}
                   onChange={(event) => setLon(event.target.value)}
@@ -1019,7 +1019,7 @@ export default function MapClient() {
               </div>
 
               <textarea
-                className="w-full rounded-lg border border-black/10 bg-white/70 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/5"
+                className="surface-field w-full rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-400"
                 placeholder="Descricao (opcional)"
                 rows={3}
                 value={desc}
@@ -1027,7 +1027,7 @@ export default function MapClient() {
               />
 
               {err && (
-                <div className="rounded border border-red-600/30 bg-red-600/10 p-2 text-xs text-red-600">{err}</div>
+                <div className="rounded border border-red-600/30 bg-red-600/10 p-2 text-xs text-red-600 dark:text-red-300">{err}</div>
               )}
 
               <div className="flex items-center justify-between pt-1">
@@ -1037,7 +1037,7 @@ export default function MapClient() {
                   <button
                     type="button"
                     onClick={() => setOpenModal(false)}
-                    className="h-10 rounded-lg bg-black/5 px-4 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20"
+                    className="surface-soft-hover h-10 rounded-lg px-4"
                   >
                     Cancelar
                   </button>

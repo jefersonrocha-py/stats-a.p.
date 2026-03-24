@@ -302,7 +302,7 @@ export default function SettingsPage() {
                           onKeyDown={(event) => onKeySave(event, antenna)}
                           placeholder="-23.50000"
                           inputMode="decimal"
-                          className="w-32 rounded-xl border border-black/10 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                          className="surface-field w-32 rounded-xl px-3 py-2"
                         />
                       </td>
                       <td className="p-3">
@@ -312,7 +312,7 @@ export default function SettingsPage() {
                           onKeyDown={(event) => onKeySave(event, antenna)}
                           placeholder="-46.60000"
                           inputMode="decimal"
-                          className="w-32 rounded-xl border border-black/10 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                          className="surface-field w-32 rounded-xl px-3 py-2"
                         />
                       </td>
                       <td className="p-3">
@@ -321,7 +321,7 @@ export default function SettingsPage() {
                           onChange={(event) => updateDraft(id, "description", event.target.value)}
                           onKeyDown={(event) => onKeySave(event, antenna)}
                           placeholder="Ponto de referencia / observacoes"
-                          className="w-full min-w-64 rounded-xl border border-black/10 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                          className="surface-field w-full min-w-64 rounded-xl px-3 py-2"
                         />
                       </td>
                       <td className="p-3">

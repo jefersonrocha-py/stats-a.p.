@@ -67,12 +67,12 @@ function getDefaultSuspensionValue() {
 
 function getStatusBadge(user: User) {
   if (user.status === "BLOCKED") {
-    return { className: "bg-rose-500/15 text-rose-400", label: "Bloqueado" };
+    return { className: "bg-rose-500/15 text-rose-700 dark:text-rose-300", label: "Bloqueado" };
   }
   if (user.status === "SUSPENDED") {
-    return { className: "bg-amber-500/15 text-amber-400", label: "Suspenso" };
+    return { className: "bg-amber-500/15 text-amber-700 dark:text-amber-300", label: "Suspenso" };
   }
-  return { className: "bg-emerald-500/15 text-emerald-400", label: "Ativo" };
+  return { className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", label: "Ativo" };
 }
 
 export default function AdminPage() {
@@ -250,8 +250,8 @@ export default function AdminPage() {
         <div
           className={`rounded-2xl border px-4 py-3 text-sm ${
             feedback.kind === "error"
-              ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              ? "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
           }`}
         >
           {feedback.message}
@@ -261,14 +261,14 @@ export default function AdminPage() {
       <div className="glass rounded-2xl p-4">
         <form onSubmit={createUser} className="grid gap-3 md:grid-cols-5">
           <input
-            className="rounded-xl bg-white/70 px-3 py-2 dark:bg-white/5"
+            className="surface-field rounded-xl px-3 py-2"
             placeholder="Nome"
             value={form.name}
             onChange={(event) => setForm({ ...form, name: event.target.value })}
             required
           />
           <input
-            className="rounded-xl bg-white/70 px-3 py-2 dark:bg-white/5"
+            className="surface-field rounded-xl px-3 py-2"
             placeholder="Email"
             type="email"
             value={form.email}
@@ -276,7 +276,7 @@ export default function AdminPage() {
             required
           />
           <input
-            className="rounded-xl bg-white/70 px-3 py-2 dark:bg-white/5"
+            className="surface-field rounded-xl px-3 py-2"
             placeholder="Senha"
             type="password"
             value={form.password}
@@ -284,7 +284,7 @@ export default function AdminPage() {
             required
           />
           <select
-            className="rounded-xl bg-white/70 px-3 py-2 dark:bg-white/5"
+            className="surface-field rounded-xl px-3 py-2"
             value={form.role}
             onChange={(event) => setForm({ ...form, role: event.target.value as UserRole })}
           >
@@ -307,7 +307,7 @@ export default function AdminPage() {
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <input
             placeholder="Buscar por nome, email, role ou status..."
-            className="w-full rounded-xl bg-white/70 px-3 py-2 dark:bg-white/5 md:w-96"
+            className="surface-field w-full rounded-xl px-3 py-2 md:w-96"
             value={q}
             onChange={(event) => setQ(event.target.value)}
           />
@@ -356,7 +356,7 @@ export default function AdminPage() {
                             <>
                               <button
                                 type="button"
-                                className="rounded-lg border border-rose-500/30 px-3 py-1.5 text-xs text-rose-300 disabled:opacity-50"
+                                className="rounded-lg border border-rose-500/30 px-3 py-1.5 text-xs text-rose-700 disabled:opacity-50 dark:text-rose-300"
                                 disabled={busyRow}
                                 onClick={() => void handleBlock(user)}
                               >
@@ -364,7 +364,7 @@ export default function AdminPage() {
                               </button>
                               <button
                                 type="button"
-                                className="rounded-lg border border-amber-500/30 px-3 py-1.5 text-xs text-amber-300 disabled:opacity-50"
+                                className="rounded-lg border border-amber-500/30 px-3 py-1.5 text-xs text-amber-700 disabled:opacity-50 dark:text-amber-300"
                                 disabled={busyRow}
                                 onClick={() => void handleSuspend(user)}
                               >
@@ -374,7 +374,7 @@ export default function AdminPage() {
                           ) : (
                             <button
                               type="button"
-                              className="rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs text-emerald-300 disabled:opacity-50"
+                              className="rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs text-emerald-700 disabled:opacity-50 dark:text-emerald-300"
                               disabled={busyRow}
                               onClick={() => void handleActivate(user.id)}
                             >
@@ -394,7 +394,7 @@ export default function AdminPage() {
 
                         <div className="flex flex-wrap items-center gap-2">
                           <input
-                            className="rounded-lg bg-white/70 px-3 py-1.5 text-xs dark:bg-white/5"
+                            className="surface-field rounded-lg px-3 py-1.5 text-xs"
                             type="datetime-local"
                             value={suspensionValue}
                             onChange={(event) =>

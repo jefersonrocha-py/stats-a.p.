@@ -84,8 +84,8 @@ export default function ResetPasswordPage() {
         transition={{ type: "spring", stiffness: 160, damping: 18 }}
       >
         <div className="relative bg-gradient-to-b from-emerald-300/90 via-emerald-400/80 to-emerald-500/60 px-6 py-7 backdrop-blur sm:px-10">
-          <div className="flex flex-col items-center gap-4 text-center text-black/80">
-            <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-black/10 px-3 py-1.5 text-sm font-medium">
+          <div className="flex flex-col items-center gap-4 text-center text-muted">
+            <div className="surface-soft inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium">
               <FontAwesomeIcon icon={faTowerBroadcast} className="h-4 w-4" />
               Nova senha
             </div>
@@ -97,7 +97,7 @@ export default function ResetPasswordPage() {
 
         <div className="glass rounded-b-3xl px-6 py-8 sm:px-10">
           <form className="space-y-4" onSubmit={onSubmit}>
-            <div className="rounded-xl border border-black/10 bg-black/5 px-3 py-2 text-xs opacity-80 dark:border-white/10 dark:bg-white/5">
+            <div className="surface-soft rounded-xl px-3 py-2 text-xs text-muted">
               <div className="mb-1 flex items-center gap-2 font-medium">
                 <FontAwesomeIcon icon={faKey} className="h-3.5 w-3.5" />
                 Politica de senha
@@ -122,8 +122,8 @@ export default function ResetPasswordPage() {
               <div
                 className={`rounded-xl border p-3 text-xs ${
                   feedback.kind === "error"
-                    ? "border-rose-500/30 bg-rose-500/10 text-rose-400"
-                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    ? "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                 }`}
               >
                 {feedback.message}
@@ -133,12 +133,12 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={busy}
-              className="btn-shine h-11 w-full rounded-xl bg-white text-neutral-900 shadow-soft transition hover:bg-white/95 active:scale-[.995] disabled:opacity-60"
+              className="btn-shine h-11 w-full rounded-xl bg-slate-950 text-white shadow-soft transition hover:bg-slate-800 active:scale-[.995] disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
             >
               {busy ? "Salvando..." : "Redefinir senha"}
             </button>
 
-            <div className="text-center text-xs opacity-80">
+            <div className="text-muted text-center text-xs">
               <Link href="/login" className="underline underline-offset-4">
                 Voltar para o login
               </Link>

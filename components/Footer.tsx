@@ -32,7 +32,7 @@ export default function Footer() {
   return (
     <footer
       role="contentinfo"
-      className="relative mt-8 w-full overflow-hidden rounded-3xl border border-black/10 bg-white/70 backdrop-blur-md dark:border-white/10 dark:bg-neutral-900/70"
+      className="glass relative mt-8 w-full overflow-hidden rounded-3xl"
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-black/10 to-transparent dark:via-white/10" />
       <div
@@ -55,7 +55,7 @@ export default function Footer() {
 
             <a
               href={`mailto:${CONTACT.email}`}
-              className="inline-flex items-center gap-2 rounded-2xl border border-black/10 bg-black/5 px-4 py-2.5 text-sm font-medium transition hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15 dark:focus-visible:ring-white/20"
+              className="surface-soft-hover inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:focus-visible:ring-white/20"
             >
               <FontAwesomeIcon icon={faEnvelope} className="h-4 w-4" />
               Fale conosco por e-mail
@@ -86,7 +86,7 @@ export default function Footer() {
             <ul className="mt-3 space-y-2 text-sm">
               {TEAM.map((member) => (
                 <li key={member.name} className="flex items-center gap-2">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-black/5 dark:border-white/10 dark:bg-white/10">
+                  <span className="surface-soft inline-flex h-8 w-8 items-center justify-center rounded-full">
                     <FontAwesomeIcon icon={faLinkedin} className="h-4 w-4" />
                   </span>
                   <span>
@@ -124,7 +124,7 @@ function ContactLine({
 }) {
   const content = (
     <>
-      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-black/5 dark:border-white/10 dark:bg-white/10">
+      <span className="surface-soft inline-flex h-9 w-9 items-center justify-center rounded-full">
         <FontAwesomeIcon icon={icon} className="h-4 w-4" />
       </span>
       <span className="text-sm opacity-85">{label}</span>
@@ -158,7 +158,7 @@ function IconButton({
       rel="noopener noreferrer"
       aria-label={label}
       title={label}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-black/10 bg-black/5 transition hover:-translate-y-0.5 hover:bg-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15 dark:focus-visible:ring-white/20"
+      className="surface-soft-hover inline-flex h-10 w-10 items-center justify-center rounded-2xl transition hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:focus-visible:ring-white/20"
     >
       <FontAwesomeIcon icon={icon} className="h-4 w-4" />
     </a>

@@ -123,10 +123,10 @@ export default function DonutChart({
         style={{
           backdropFilter: "blur(6px)",
           WebkitBackdropFilter: "blur(6px)",
-          background: "rgba(255,255,255,0.9)",
-          color: "#111",
+          background: "var(--surface-strong)",
+          color: "var(--text)",
           borderRadius: 10,
-          border: "1px solid rgba(0,0,0,0.1)",
+          border: "1px solid var(--border)",
           padding: "8px 10px",
         }}
       >
@@ -141,7 +141,7 @@ export default function DonutChart({
   if (total === 0) {
     return (
       <div
-        className={`w-full grid place-items-center rounded-2xl bg-black/5 dark:bg-white/5 ${className || ""}`}
+        className={`surface-soft grid w-full place-items-center rounded-2xl ${className || ""}`}
         style={{ height }}
         role="img"
         aria-label="Gráfico de disponibilidade: sem dados"
@@ -459,7 +459,7 @@ export default function DonutChart({
                 fill={`url(#${ids.upGrad})`}
                 style={{ filter: hoverBand === "UP" ? `url(#${ids.glowUp})` : "none", transition: "filter 120ms ease" } as any}
               />
-              <Cell name="rest" fill="rgba(0,0,0,0.08)" />
+              <Cell name="rest" fill="var(--surface-soft)" />
             </Pie>
 
             {/* Anel DOWN */}
@@ -485,7 +485,7 @@ export default function DonutChart({
                 fill={`url(#${ids.downGrad})`}
                 style={{ filter: hoverBand === "DOWN" ? `url(#${ids.glowDown})` : "none", transition: "filter 120ms ease" } as any}
               />
-              <Cell name="rest" fill="rgba(0,0,0,0.08)" />
+              <Cell name="rest" fill="var(--surface-soft)" />
             </Pie>
 
             {/* Anel UNKNOWN (opcional) */}
@@ -512,7 +512,7 @@ export default function DonutChart({
                   fill={`url(#${ids.unkGrad})`}
                   style={{ filter: hoverBand === "UNKNOWN" ? `url(#${ids.glowUnk})` : "none", transition: "filter 120ms ease" } as any}
                 />
-                <Cell name="rest" fill="rgba(0,0,0,0.08)" />
+                <Cell name="rest" fill="var(--surface-soft)" />
               </Pie>
             )}
 

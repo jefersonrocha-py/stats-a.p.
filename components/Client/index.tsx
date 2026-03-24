@@ -30,7 +30,7 @@ function fmtDateTime(value?: string | null) {
 
 function SkeletonCard() {
   return (
-    <div className="rounded-2xl border border-black/10 bg-black/5 p-4 dark:border-white/10 dark:bg-white/5">
+    <div className="surface-soft rounded-2xl p-4">
       <div className="h-3 w-24 animate-pulse rounded bg-black/10 dark:bg-white/10" />
       <div className="mt-3 h-8 w-20 animate-pulse rounded bg-black/10 dark:bg-white/10" />
       <div className="mt-4 grid grid-cols-3 gap-2">
@@ -44,7 +44,7 @@ function SkeletonCard() {
 
 function StatChip({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-black/10 bg-white/60 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+    <div className="surface-field rounded-2xl px-3 py-2">
       <div className="text-[11px] uppercase tracking-[0.18em] opacity-60">{label}</div>
       <div className="mt-1 text-lg font-semibold">{fmtInt(value)}</div>
     </div>
@@ -102,7 +102,7 @@ export default function Client({
           {items.map((item) => (
             <article
               key={item.networkId}
-              className="rounded-2xl border border-black/10 bg-black/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] dark:border-white/10 dark:bg-white/5"
+              className="surface-soft rounded-2xl p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

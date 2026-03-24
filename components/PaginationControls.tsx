@@ -23,7 +23,7 @@ export default function PaginationControls({
   const end = totalItems === 0 ? 0 : Math.min(safePage * pageSize, totalItems);
 
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-black/10 bg-black/[0.03] px-4 py-3 text-sm dark:border-white/10 dark:bg-white/[0.04] md:flex-row md:items-center md:justify-between">
+    <div className="surface-soft mt-4 flex flex-col gap-3 rounded-2xl px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
       <div className="opacity-75">
         {totalItems === 0
           ? `Nenhum ${itemLabel}`
@@ -35,7 +35,7 @@ export default function PaginationControls({
           type="button"
           onClick={() => onPageChange(1)}
           disabled={safePage <= 1}
-          className="rounded-lg border border-black/10 px-3 py-1.5 disabled:opacity-40 dark:border-white/10"
+          className="surface-soft-hover rounded-lg px-3 py-1.5 disabled:opacity-40"
           aria-label="Primeira pagina"
         >
           {"<<"}
@@ -44,7 +44,7 @@ export default function PaginationControls({
           type="button"
           onClick={() => onPageChange(safePage - 1)}
           disabled={safePage <= 1}
-          className="rounded-lg border border-black/10 px-3 py-1.5 disabled:opacity-40 dark:border-white/10"
+          className="surface-soft-hover rounded-lg px-3 py-1.5 disabled:opacity-40"
           aria-label="Pagina anterior"
         >
           {"<"}
@@ -56,7 +56,7 @@ export default function PaginationControls({
           type="button"
           onClick={() => onPageChange(safePage + 1)}
           disabled={safePage >= safeTotalPages}
-          className="rounded-lg border border-black/10 px-3 py-1.5 disabled:opacity-40 dark:border-white/10"
+          className="surface-soft-hover rounded-lg px-3 py-1.5 disabled:opacity-40"
           aria-label="Proxima pagina"
         >
           {">"}
@@ -65,7 +65,7 @@ export default function PaginationControls({
           type="button"
           onClick={() => onPageChange(safeTotalPages)}
           disabled={safePage >= safeTotalPages}
-          className="rounded-lg border border-black/10 px-3 py-1.5 disabled:opacity-40 dark:border-white/10"
+          className="surface-soft-hover rounded-lg px-3 py-1.5 disabled:opacity-40"
           aria-label="Ultima pagina"
         >
           {">>"}

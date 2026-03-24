@@ -100,7 +100,7 @@ export default function LoginPage() {
                 priority
               />
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-black/10 px-3 py-1.5 text-sm font-medium text-black/75">
+            <div className="surface-soft inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-muted">
               <FontAwesomeIcon icon={faTowerBroadcast} className="h-4 w-4" />
               Monitoramento de APs
             </div>
@@ -112,7 +112,7 @@ export default function LoginPage() {
             <label className="block">
               <span className="sr-only">Email</span>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 opacity-80">
+                <span className="text-muted absolute left-3 top-1/2 -translate-y-1/2">
                   <FontAwesomeIcon icon={faUser} className="h-4 w-4" />
                 </span>
                 <input
@@ -120,7 +120,7 @@ export default function LoginPage() {
                   inputMode="email"
                   autoComplete="email"
                   placeholder="Email"
-                  className="h-11 w-full rounded-xl border border-black/10 bg-white/80 pl-9 pr-3 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/10"
+                  className="surface-field h-11 w-full rounded-xl pl-9 pr-3 outline-none focus:ring-2 focus:ring-emerald-400"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   required
@@ -131,14 +131,14 @@ export default function LoginPage() {
             <label className="block">
               <span className="sr-only">Senha</span>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 opacity-80">
+                <span className="text-muted absolute left-3 top-1/2 -translate-y-1/2">
                   <FontAwesomeIcon icon={faLock} className="h-4 w-4" />
                 </span>
                 <input
                   type="password"
                   autoComplete="current-password"
                   placeholder="Password"
-                  className="h-11 w-full rounded-xl border border-black/10 bg-white/80 pl-9 pr-3 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/10"
+                  className="surface-field h-11 w-full rounded-xl pl-9 pr-3 outline-none focus:ring-2 focus:ring-emerald-400"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
@@ -147,7 +147,7 @@ export default function LoginPage() {
             </label>
 
             {error && (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-500">
+              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300">
                 {error}
               </div>
             )}
@@ -155,12 +155,12 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={busy}
-              className="btn-shine h-11 w-full rounded-xl bg-white text-neutral-900 shadow-soft transition hover:bg-white/95 active:scale-[.995] disabled:opacity-60"
+              className="btn-shine h-11 w-full rounded-xl bg-slate-950 text-white shadow-soft transition hover:bg-slate-800 active:scale-[.995] disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
             >
               {busy ? "Entrando..." : "LOGIN"}
             </button>
 
-            <div className="flex items-center justify-between gap-3 text-xs opacity-80">
+            <div className="text-muted flex items-center justify-between gap-3 text-xs">
               <Link href="/forgot-password" className="underline underline-offset-4 hover:opacity-100">
                 Esqueceu a senha?
               </Link>

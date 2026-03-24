@@ -80,15 +80,8 @@ export default function TopBar() {
   }, []);
 
   // ===== Tema
-  const { theme, toggle: toggleTheme } = useThemeStore();
-  const isLight = (() => {
-    if (theme === "light") return true;
-    if (theme === "dark") return false;
-    if (typeof window !== "undefined" && window.matchMedia) {
-      return !window.matchMedia("(prefers-color-scheme: dark)").matches;
-    }
-    return true;
-  })();
+  const { resolvedTheme, toggle: toggleTheme } = useThemeStore();
+  const isLight = resolvedTheme === "light";
 
   // ===== Logout
   async function handleLogout() {
@@ -117,7 +110,7 @@ export default function TopBar() {
                   className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60 h-4 w-4"
                 />
                 <input
-                  className="w-full pl-9 pr-3 h-9 rounded-lg bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 focus:ring-2 focus:ring-brand3 outline-none"
+                  className="surface-field h-9 w-full rounded-lg pl-9 pr-3 outline-none focus:ring-2 focus:ring-brand3"
                   placeholder="Pesquisar antena (nome)..."
                   aria-label="Pesquisar antena"
                   value={q}
@@ -132,7 +125,7 @@ export default function TopBar() {
               {/* Recarregar */}
               <button
                 onClick={() => location.reload()}
-                className="h-8 w-8 sm:h-9 sm:w-9 grid place-items-center rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
+                className="surface-soft-hover grid h-8 w-8 place-items-center rounded-lg sm:h-9 sm:w-9"
                 title="Recarregar"
                 aria-label="Recarregar"
               >
@@ -142,7 +135,7 @@ export default function TopBar() {
               {/* Fullscreen do mapa */}
               <button
                 onClick={toggleFullscreen}
-                className="h-8 w-8 sm:h-9 sm:w-9 grid place-items-center rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
+                className="surface-soft-hover grid h-8 w-8 place-items-center rounded-lg sm:h-9 sm:w-9"
                 title={isFs ? "Sair do Fullscreen do mapa" : "Fullscreen do mapa"}
                 aria-label="Alternar fullscreen do mapa"
               >
@@ -152,7 +145,7 @@ export default function TopBar() {
               {/* Tema */}
               <button
                 onClick={toggleTheme}
-                className="h-8 w-8 sm:h-9 sm:w-9 grid place-items-center rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
+                className="surface-soft-hover grid h-8 w-8 place-items-center rounded-lg sm:h-9 sm:w-9"
                 title={isLight ? "Mudar para Dark" : "Mudar para Light"}
                 aria-label="Alternar tema"
               >
@@ -162,7 +155,7 @@ export default function TopBar() {
               {/* Sair */}
               <button
                 onClick={handleLogout}
-                className="h-8 sm:h-9 inline-flex items-center gap-2 px-2.5 sm:px-3 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
+                className="surface-soft-hover inline-flex h-8 items-center gap-2 rounded-lg px-2.5 sm:h-9 sm:px-3"
                 title="Sair"
                 aria-label="Sair"
               >

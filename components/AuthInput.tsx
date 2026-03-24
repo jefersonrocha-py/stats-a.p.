@@ -28,9 +28,9 @@ export default function AuthInput({
       transition={{ type: "spring", stiffness: 250, damping: 22 }}
     >
       <div className="relative">
-        <FontAwesomeIcon icon={icon} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60 h-4 w-4" />
+        <FontAwesomeIcon icon={icon} className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
         <input
-          className="w-full pl-9 pr-3 py-3 rounded-xl bg-white/70 dark:bg-white/5 border border-black/10 dark:border-white/10 focus:ring-2 focus:ring-brand3 outline-none"
+          className="surface-field w-full rounded-xl py-3 pl-9 pr-3 outline-none focus:ring-2 focus:ring-brand3"
           type={type}
           placeholder={placeholder}
           value={value}

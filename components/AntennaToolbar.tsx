@@ -42,7 +42,7 @@ export default function AntennaToolbar({
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           <p className="max-w-3xl text-sm opacity-75">{description}</p>
         </div>
-        <div className="rounded-2xl border border-black/10 bg-black/[0.03] px-4 py-3 text-sm dark:border-white/10 dark:bg-white/[0.04]">
+        <div className="surface-soft rounded-2xl px-4 py-3 text-sm">
           <div className="opacity-70">Registros encontrados</div>
           <div className="text-2xl font-semibold">{totalCount}</div>
         </div>
@@ -55,7 +55,7 @@ export default function AntennaToolbar({
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder={queryPlaceholder}
-            className="w-full rounded-2xl border border-black/10 bg-white/80 px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 dark:border-white/10 dark:bg-white/5"
+            className="surface-field w-full rounded-2xl px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
           />
         </label>
 
@@ -64,7 +64,7 @@ export default function AntennaToolbar({
           <select
             value={network}
             onChange={(event) => onNetworkChange(event.target.value)}
-            className="w-full rounded-2xl border border-black/10 bg-white/80 px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 dark:border-white/10 dark:bg-white/5"
+            className="surface-field w-full rounded-2xl px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
           >
             <option value="">Todas as redes</option>
             {networks.map((item) => (
@@ -80,7 +80,7 @@ export default function AntennaToolbar({
           <select
             value={String(pageSize)}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="w-full rounded-2xl border border-black/10 bg-white/80 px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 dark:border-white/10 dark:bg-white/5"
+            className="surface-field w-full rounded-2xl px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
           >
             {[10, 25, 50, 100].map((size) => (
               <option key={size} value={size}>

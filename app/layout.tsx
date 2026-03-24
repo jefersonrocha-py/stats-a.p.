@@ -1,7 +1,7 @@
-// app/layout.tsx
-import "../styles/globals.css"; // importa CSS global só aqui (no root)
+import "../styles/globals.css";
 import type { Metadata } from "next";
 import ThemeScript from "@components/ThemeScript";
+import ThemeSync from "@components/ThemeSync";
 
 export const metadata: Metadata = {
   title: "Etherium Antennas",
@@ -15,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeScript />
       </head>
       <body className="min-h-screen bg-app text-app antialiased">
+        <ThemeSync />
         {children}
       </body>
     </html>
