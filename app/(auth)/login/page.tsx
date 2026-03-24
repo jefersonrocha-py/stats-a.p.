@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLock, faTowerBroadcast, faUser } from "@fortawesome/free-solid-svg-icons";
 import AuthParticles from "@components/AuthParticles";
-import { api } from "@services/api";
+import { buildApiHeaders } from "@services/api";
 
 const ETHERIUM_LOGO = {
   src: "/logo_etherium.png",
@@ -30,20 +31,31 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await api("/api/auth/login", {
+      const response = await fetch("/api/auth/login", {
+        headers: buildApiHeaders(undefined, "POST"),
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      router.push("/");
-    } catch (err: any) {
-      const message = String(err?.message || "");
-      if (message.includes("INVALID_CREDENTIALS")) setError("Credenciais invalidas.");
-      else if (message.includes("ORIGIN_MISMATCH") || message.includes("ORIGIN_REQUIRED")) {
-        setError("Falha de origem da requisicao. Recarregue a pagina e tente novamente.");
-      } else if (message.includes("CSRF_INVALID")) {
-        setError("Sessao de seguranca invalida. Recarregue a pagina e tente novamente.");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const apiError = String(payload?.error || "");
+        if (apiError === "INVALID_CREDENTIALS") setError("Credenciais invalidas.");
+        else if (apiError === "ACCOUNT_BLOCKED") setError("Sua conta esta bloqueada. Procure um administrador.");
+        else if (apiError === "ACCOUNT_SUSPENDED") {
+          setError("Sua conta esta suspensa temporariamente. Aguarde a liberacao ou contate um administrador.");
+        } else if (apiError === "ORIGIN_MISMATCH" || apiError === "ORIGIN_REQUIRED") {
+          setError("Falha de origem da requisicao. Recarregue a pagina e tente novamente.");
+        } else if (apiError === "CSRF_INVALID") {
+          setError("Sessao de seguranca invalida. Recarregue a pagina e tente novamente.");
+        } else {
+          setError("Nao foi possivel entrar agora.");
+        }
+        return;
       }
-      else setError("Nao foi possivel entrar agora.");
+
+      router.push("/");
+    } catch {
+      setError("Nao foi possivel entrar agora.");
     } finally {
       setBusy(false);
     }
@@ -107,7 +119,7 @@ export default function LoginPage() {
                   type="email"
                   inputMode="email"
                   autoComplete="email"
-                  placeholder="Username / Email"
+                  placeholder="Email"
                   className="h-11 w-full rounded-xl border border-black/10 bg-white/80 pl-9 pr-3 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-white/10 dark:bg-white/10"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -148,8 +160,11 @@ export default function LoginPage() {
               {busy ? "Entrando..." : "LOGIN"}
             </button>
 
-            <div className="text-center text-xs opacity-80">
-              Solicite o acesso ou a redefinicao de senha com um administrador.
+            <div className="flex items-center justify-between gap-3 text-xs opacity-80">
+              <Link href="/forgot-password" className="underline underline-offset-4 hover:opacity-100">
+                Esqueceu a senha?
+              </Link>
+              <span>Solicite o acesso com um administrador.</span>
             </div>
           </form>
         </div>

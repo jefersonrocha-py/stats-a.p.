@@ -13,8 +13,8 @@ import { strongPasswordSchema } from "@lib/validatorsAuth";
 import { z } from "zod";
 
 const createUserSchema = z.object({
-  name: z.string().min(2).max(100),
-  email: z.string().email().max(200),
+  name: z.string().trim().min(2).max(100),
+  email: z.string().trim().email().max(200),
   password: strongPasswordSchema,
   role: z.enum(["USER", "ADMIN", "SUPERADMIN"]).optional().default("USER"),
 });
@@ -26,6 +26,7 @@ type UserRow = RowDataPacket & {
   role: string;
   createdAt: Date | string;
   isBlocked: number | boolean;
+  suspendedUntil: Date | string | null;
 };
 
 export async function GET(req: Request) {
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
     if ("response" in auth) return auth.response;
 
     const raw = await dbQuery<UserRow>(
-      "SELECT `id`, `name`, `email`, `role`, `createdAt`, `isBlocked` FROM `User` ORDER BY `id` ASC"
+      "SELECT `id`, `name`, `email`, `role`, `createdAt`, `isBlocked`, `suspendedUntil` FROM `User` ORDER BY `id` ASC"
     );
 
     return NextResponse.json({ ok: true, total: raw.length, items: raw.map(mapUserRow) });
@@ -80,12 +81,12 @@ export async function POST(req: Request) {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const result = await dbExecute(
-      "INSERT INTO `User` (`name`, `email`, `passwordHash`, `role`, `isBlocked`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?)",
+      "INSERT INTO `User` (`name`, `email`, `passwordHash`, `role`, `isBlocked`, `suspendedUntil`, `createdAt`) VALUES (?, ?, ?, ?, 0, NULL, ?)",
       [name, normalizedEmail, passwordHash, role, new Date()]
     );
 
     const item = await dbQueryOne<UserRow>(
-      "SELECT `id`, `name`, `email`, `role`, `createdAt`, `isBlocked` FROM `User` WHERE `id` = ? LIMIT 1",
+      "SELECT `id`, `name`, `email`, `role`, `createdAt`, `isBlocked`, `suspendedUntil` FROM `User` WHERE `id` = ? LIMIT 1",
       [result.insertId]
     );
 

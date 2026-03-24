@@ -38,10 +38,29 @@ CREATE TABLE IF NOT EXISTS `User` (
   `passwordHash` VARCHAR(255) NOT NULL,
   `role` VARCHAR(20) NOT NULL DEFAULT 'USER',
   `isBlocked` BOOLEAN NOT NULL DEFAULT FALSE,
+  `suspendedUntil` DATETIME NULL,
   `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `User_email_key` (`email`),
   KEY `User_role_idx` (`role`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `User`
+  ADD COLUMN IF NOT EXISTS `suspendedUntil` DATETIME NULL AFTER `isBlocked`;
+
+CREATE TABLE IF NOT EXISTS `PasswordResetToken` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `userId` INT NOT NULL,
+  `tokenHash` CHAR(64) NOT NULL,
+  `expiresAt` DATETIME NOT NULL,
+  `usedAt` DATETIME NULL,
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `PasswordResetToken_tokenHash_key` (`tokenHash`),
+  KEY `PasswordResetToken_userId_idx` (`userId`),
+  KEY `PasswordResetToken_expiresAt_idx` (`expiresAt`),
+  CONSTRAINT `PasswordResetToken_userId_fkey`
+    FOREIGN KEY (`userId`) REFERENCES `User` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gdms_token` (

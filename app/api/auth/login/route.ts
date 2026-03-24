@@ -13,6 +13,7 @@ import {
 } from "@lib/auth";
 import { dbQueryOne } from "@lib/mysql";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@lib/rateLimit";
+import { getUserAccountStatus } from "@lib/userStatus";
 import { loginSchema } from "@lib/validatorsAuth";
 
 type UserRow = RowDataPacket & {
@@ -22,6 +23,7 @@ type UserRow = RowDataPacket & {
   role: string;
   passwordHash: string;
   isBlocked: number | boolean;
+  suspendedUntil: Date | string | null;
 };
 
 export async function POST(req: Request) {
@@ -58,7 +60,7 @@ export async function POST(req: Request) {
     }
 
     const user = await dbQueryOne<UserRow>(
-      "SELECT `id`, `email`, `name`, `role`, `passwordHash`, `isBlocked` FROM `User` WHERE `email` = ? LIMIT 1",
+      "SELECT `id`, `email`, `name`, `role`, `passwordHash`, `isBlocked`, `suspendedUntil` FROM `User` WHERE `email` = ? LIMIT 1",
       [normalizedEmail]
     );
 
@@ -66,13 +68,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
-    if (user.isBlocked === true || user.isBlocked === 1) {
-      return NextResponse.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
-    }
-
     const passwordOk = await bcrypt.compare(password, user.passwordHash);
     if (!passwordOk) {
       return NextResponse.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
+    }
+
+    const accountStatus = getUserAccountStatus(user);
+    if (accountStatus.status === "BLOCKED") {
+      return NextResponse.json({ ok: false, error: "ACCOUNT_BLOCKED" }, { status: 403 });
+    }
+    if (accountStatus.status === "SUSPENDED") {
+      return NextResponse.json(
+        { ok: false, error: "ACCOUNT_SUSPENDED", suspendedUntil: accountStatus.suspendedUntil },
+        { status: 403 }
+      );
     }
 
     const rawRole = user.role as string | undefined;

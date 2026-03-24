@@ -1,3 +1,5 @@
+import { getUserAccountStatus } from "./userStatus";
+
 function toIso(value: unknown) {
   if (value === null || value === undefined) return null;
   const date = value instanceof Date ? value : new Date(String(value));
@@ -22,10 +24,13 @@ export function mapAntennaRow(row: Record<string, any>) {
 }
 
 export function mapUserRow(row: Record<string, any>) {
+  const account = getUserAccountStatus(row);
   return {
     ...row,
     id: Number(row.id),
-    isBlocked: toBoolean(row.isBlocked),
+    isBlocked: account.isBlocked,
+    suspendedUntil: account.suspendedUntil,
+    status: account.status,
     createdAt: toIso(row.createdAt),
   };
 }

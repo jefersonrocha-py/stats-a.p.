@@ -1,16 +1,27 @@
 import { z } from "zod";
 
+export const PASSWORD_POLICY_ITEMS = [
+  "Minimo de 12 caracteres.",
+  "Pelo menos uma letra minuscula.",
+  "Pelo menos uma letra maiuscula.",
+  "Pelo menos um numero.",
+  "Pelo menos um simbolo.",
+] as const;
+
+export const PASSWORD_POLICY_HINT = PASSWORD_POLICY_ITEMS.join(" ");
+
 export const strongPasswordSchema = z
   .string()
-  .min(12)
-  .max(72)
-  .regex(/[a-z]/, "Password must contain a lowercase letter.")
-  .regex(/[A-Z]/, "Password must contain an uppercase letter.")
-  .regex(/\d/, "Password must contain a number.")
-  .regex(/[^A-Za-z0-9]/, "Password must contain a symbol.");
+  .trim()
+  .min(12, "A senha deve ter no minimo 12 caracteres.")
+  .max(72, "A senha pode ter no maximo 72 caracteres.")
+  .regex(/[a-z]/, "A senha deve conter ao menos uma letra minuscula.")
+  .regex(/[A-Z]/, "A senha deve conter ao menos uma letra maiuscula.")
+  .regex(/\d/, "A senha deve conter ao menos um numero.")
+  .regex(/[^A-Za-z0-9]/, "A senha deve conter ao menos um simbolo.");
 
 export const registerSchema = z.object({
-  name: z.string().min(2).max(80),
+  name: z.string().trim().min(2).max(80),
   email: z.string().email().toLowerCase().trim(),
   password: strongPasswordSchema,
 });
