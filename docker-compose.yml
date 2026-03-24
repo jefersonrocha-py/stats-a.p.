@@ -43,6 +43,7 @@ services:
       HOST: ${HOST}
       PORT: ${PORT}
       HOST_PORT: ${HOST_PORT}
+      APP_URL: ${APP_URL}
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_DAYS: ${JWT_EXPIRES_DAYS}

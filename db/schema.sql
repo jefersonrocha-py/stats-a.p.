@@ -45,9 +45,6 @@ CREATE TABLE IF NOT EXISTS `User` (
   KEY `User_role_idx` (`role`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `User`
-  ADD COLUMN IF NOT EXISTS `suspendedUntil` DATETIME NULL AFTER `isBlocked`;
-
 CREATE TABLE IF NOT EXISTS `PasswordResetToken` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `userId` INT NOT NULL,

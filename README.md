@@ -43,10 +43,11 @@
 O projeto entrega uma camada operacional completa para inventario, monitoramento e manutencao de access points Grandstream:
 
 - autenticacao com JWT em cookie `HttpOnly`, protecao CSRF, validacao de origem e rate limit;
+- recuperacao de senha por email com token temporario e paginas dedicadas de solicitacao/reset;
 - mapa operacional com APs posicionados, filtros, busca e fallback automatico para OpenStreetMap;
 - dashboard com totais locais e consolidacao de clientes por rede via GDMS;
 - fila de pendencias para APs sem coordenadas, com sincronizacao manual e tratamento em lotes;
-- area administrativa para gestao de usuarios com separacao por papeis `USER`, `ADMIN` e `SUPERADMIN`;
+- area administrativa para gestao de usuarios com separacao por papeis `USER`, `ADMIN` e `SUPERADMIN`, incluindo bloqueio, suspensao temporaria, reativacao, exclusao e politica de senha;
 - worker dedicado para sincronizacao periodica com o GDMS usando `x-internal-api-key`;
 - stream SSE para refletir alteracoes de APs e status em tempo real nas telas principais.
 
@@ -58,7 +59,8 @@ O projeto entrega uma camada operacional completa para inventario, monitoramento
 | Mapa | `maplibre-gl` com tiles ArcGIS e fallback para OSM | Visualizacao geografica dos APs e operacao em campo |
 | Backend | Route Handlers em `app/api/*` | API interna, autenticacao, RBAC, integracoes e healthcheck |
 | Seguranca | `jose`, `bcryptjs`, middleware customizado, `zod` | JWT, cookies, validacao de origem, CSRF e validacao de payload |
-| Banco | MySQL 8 + `mysql2/promise` + SQL direto | Persistencia de `Antenna`, `StatusHistory`, `User` e `gdms_token` |
+| Email | `nodemailer` + SMTP autenticado | Entrega de link de redefinicao de senha |
+| Banco | MySQL 8 + `mysql2/promise` + SQL direto | Persistencia de `Antenna`, `StatusHistory`, `User`, `PasswordResetToken` e `gdms_token` |
 | Integracao | GDMS OAuth Client Credentials + APIs de redes/APs | Importacao de inventario, status e clientes por rede |
 | Tempo real | Server-Sent Events em `/api/events` | Atualizacao assíncrona da UI sem polling agressivo |
 | Infra | Docker multi-stage + Docker Compose | Servicos `mysql`, `web` e `worker` com healthchecks |
@@ -79,7 +81,7 @@ flowchart LR
   end
 
   subgraph Data["Persistencia"]
-    DB[("MySQL 8<br/>Antenna, StatusHistory, User, gdms_token")]
+    DB[("MySQL 8<br/>Antenna, StatusHistory, User, PasswordResetToken, gdms_token")]
   end
 
   subgraph External["Integracoes externas"]
@@ -106,6 +108,7 @@ flowchart LR
 - O schema do banco esta em [`db/schema.sql`](./db/schema.sql), sem ORM ativo em producao.
 - O container `web` inicializa o banco e garante o superadmin via [`scripts/docker-entrypoint.sh`](./scripts/docker-entrypoint.sh).
 - O container `worker` nao fala direto com o GDMS em nome da UI; ele chama a API interna de sincronizacao, preservando a mesma regra de negocio do backend.
+- Links enviados por email devem apontar para uma URL publica/acessivel pelo navegador; `APP_BASE_URL=http://web:3000` continua restrita ao trafego interno do worker.
 
 ## Fluxos Criticos
 
@@ -129,6 +132,28 @@ sequenceDiagram
   B->>M: Navega para rota privada
   M->>M: Verifica cookie auth
   M-->>B: Libera, redireciona ou bloqueia por papel
+```
+
+### 1.1. Recuperacao de senha por email
+
+```mermaid
+sequenceDiagram
+  actor U as Usuario
+  participant B as Browser
+  participant F as POST /api/auth/forgot-password
+  participant R as POST /api/auth/reset-password
+  participant DB as MySQL
+  participant SMTP as SMTP
+
+  U->>B: Clica em /forgot-password
+  B->>F: POST email
+  F->>DB: Invalida tokens anteriores e grava novo PasswordResetToken
+  F->>SMTP: Envia link /reset-password?token=...
+  SMTP-->>U: Email com link temporario
+  U->>B: Abre link recebido
+  B->>R: POST nova senha + token
+  R->>DB: Atualiza passwordHash e consome token
+  R-->>B: Reset confirmado
 ```
 
 ### 2. Sincronizacao GDMS
@@ -166,12 +191,14 @@ sequenceDiagram
 | Area | Rota | Funcao | Papel minimo |
 | --- | --- | --- | --- |
 | Login | `/login` | Entrada do usuario e emissao dos cookies `auth` + `csrf` | Publico |
+| Recuperacao | `/forgot-password` | Solicita envio do link de redefinicao por email | Publico |
+| Reset de senha | `/reset-password` | Define nova senha a partir do token recebido por email | Publico |
 | Mapa | `/` | Visualiza APs com coordenadas, filtros e acao manual de criacao de AP | Autenticado; criacao manual para `ADMIN`/`SUPERADMIN` |
 | Dashboard | `/dashboard` | Totais locais, disponibilidade e clientes por rede | Autenticado |
 | Clientes | `/clients` | Visao de clientes conectados por rede consumindo GDMS em tempo real de consulta | Autenticado |
 | Filter Cluster | `/filter-cluster` | Busca operacional, paginacao, exportacao CSV, alteracao de status e exclusao | Leitura para autenticado; mutacao para `ADMIN`/`SUPERADMIN` |
 | Settings | `/settings` | Fila de APs sem coordenadas e sincronizacao manual GDMS | `ADMIN`/`SUPERADMIN` |
-| Admin | `/admin` | Listagem e criacao de usuarios | `SUPERADMIN` |
+| Admin | `/admin` | Listagem, criacao, bloqueio, suspensao, reativacao e exclusao de usuarios | `SUPERADMIN` |
 
 ## Modelo de Dados
 
@@ -207,6 +234,16 @@ erDiagram
     string passwordHash
     string role
     boolean isBlocked
+    datetime suspendedUntil
+    datetime createdAt
+  }
+
+  PasswordResetToken {
+    bigint id PK
+    int userId FK
+    string tokenHash UK
+    datetime expiresAt
+    datetime usedAt
     datetime createdAt
   }
 
@@ -218,6 +255,7 @@ erDiagram
   }
 
   Antenna ||--o{ StatusHistory : tracks
+  User ||--o{ PasswordResetToken : owns
 ```
 
 ## Estrutura Completa do Repositorio
@@ -263,7 +301,11 @@ Diretorios gerados ou externos omitidos propositalmente: `.git/`, `.next/` e `no
 |   |       `-- page.tsx
 |   |-- (auth)
 |   |   |-- layout.tsx
-|   |   `-- login
+|   |   |-- forgot-password
+|   |   |   `-- page.tsx
+|   |   |-- login
+|   |   |   `-- page.tsx
+|   |   `-- reset-password
 |   |       `-- page.tsx
 |   |-- api
 |   |   |-- antennas
@@ -275,9 +317,13 @@ Diretorios gerados ou externos omitidos propositalmente: `.git/`, `.next/` e `no
 |   |   |   |   `-- route.ts
 |   |   |   `-- route.ts
 |   |   |-- auth
+|   |   |   |-- forgot-password
+|   |   |   |   `-- route.ts
 |   |   |   |-- login
 |   |   |   |   `-- route.ts
 |   |   |   |-- logout
+|   |   |   |   `-- route.ts
+|   |   |   |-- reset-password
 |   |   |   |   `-- route.ts
 |   |   |   `-- register
 |   |   |       `-- route.ts
@@ -305,6 +351,8 @@ Diretorios gerados ou externos omitidos propositalmente: `.git/`, `.next/` e `no
 |   |   |   |   `-- route.ts
 |   |   |   `-- route.ts
 |   |   `-- users
+|   |       |-- [id]
+|   |       |   `-- route.ts
 |   |       `-- route.ts
 |   |-- layout.tsx
 |   `-- loading.tsx
@@ -333,10 +381,13 @@ Diretorios gerados ou externos omitidos propositalmente: `.git/`, `.next/` e `no
 |   |-- dbErrors.ts
 |   |-- dbMappers.ts
 |   |-- gdmsToken.ts
+|   |-- email.ts
 |   |-- mysql.ts
+|   |-- passwordReset.ts
 |   |-- rateLimit.ts
 |   |-- requestSecurity.ts
 |   |-- sse.ts
+|   |-- userStatus.ts
 |   |-- validators.ts
 |   `-- validatorsAuth.ts
 |-- prisma
@@ -391,7 +442,8 @@ Use [`env.example`](./env.example) como baseline. Abaixo estao as chaves que rea
 | `NODE_ENV` | Sim | `production` | Ativa politicas de seguranca e cookies seguros |
 | `HOST` | Sim | `0.0.0.0` | Bind do servidor Next.js |
 | `PORT` | Sim | `3000` | Porta interna do container `web` |
-| `HOST_PORT` | Sim no Compose | `3001` | Porta exposta no host |
+| `HOST_PORT` | Sim no Compose | `3200` | Porta exposta no host |
+| `APP_URL` | Recomendada | `http://localhost:3200` ou `https://seu-dominio.com` | URL publica usada em validacao de origem e como base para links de reset |
 | `JWT_SECRET` | Sim | segredo >= 32 chars | Obrigatorio para assinar/verificar JWT |
 | `JWT_EXPIRES_DAYS` | Nao | `7` | TTL do cookie de autenticacao |
 | `COOKIE_SECURE` | Sim em producao | `true` | Deve ficar `false` apenas em HTTP local |
@@ -426,6 +478,20 @@ Use [`env.example`](./env.example) como baseline. Abaixo estao as chaves que rea
 | `SYNC_PATH` | Sim no worker | `/api/integrations/gdms/sync?mode=status` | Rota chamada pelo cron |
 | `SYNC_INTERVAL_MS` | Sim no worker | `300000` | Intervalo do worker em milissegundos |
 
+### Recuperacao de senha e email
+
+| Variavel | Obrigatoria | Exemplo | Observacao |
+| --- | --- | --- | --- |
+| `PASSWORD_RESET_BASE_URL` | Nao | `https://auth.exemplo.com` | Sobrescreve a base do link de redefinicao quando precisa divergir do `APP_URL` |
+| `PASSWORD_RESET_TOKEN_MINUTES` | Nao | `60` | TTL do token de reset |
+| `EMAIL_DEFAULT_FROM` | Sim se usar reset por email | `noreply@example.com` | Remetente do email |
+| `EMAIL_TRANSPORT_DEFAULT_HOST` | Sim se usar reset por email | `smtp.gmail.com` | Host SMTP |
+| `EMAIL_TRANSPORT_DEFAULT_PORT` | Sim se usar reset por email | `587` | Porta SMTP |
+| `EMAIL_TRANSPORT_DEFAULT_USERNAME` | Sim se usar reset por email | `usuario@example.com` | Usuario SMTP |
+| `EMAIL_TRANSPORT_DEFAULT_PASSWORD` | Sim se usar reset por email | `...` | Senha ou app password SMTP |
+| `EMAIL_TRANSPORT_DEFAULT_TLS` | Nao | `true` | Exige TLS no transporte |
+| `PASSBOLT_KEY_EMAIL` | Nao | `noreply@example.com` | Fallback para remetente quando `EMAIL_DEFAULT_FROM` nao estiver definido |
+
 ### Bootstrap administrativo
 
 | Variavel | Obrigatoria | Exemplo | Observacao |
@@ -436,11 +502,11 @@ Use [`env.example`](./env.example) como baseline. Abaixo estao as chaves que rea
 
 ### Proxy e origem confiavel
 
-Essas variaveis sao aceitas pelo codigo, embora nao venham preenchidas no `env.example`:
+Essas variaveis sao aceitas pelo codigo para origem publica e fallback do frontend:
 
 | Variavel | Quando usar | Papel |
 | --- | --- | --- |
-| `APP_URL` | Reverse proxy, dominio publico, HTTPS terminado fora do container | Ajuda a validacao de origem em mutacoes |
+| `APP_URL` | Reverse proxy, dominio publico, HTTPS terminado fora do container | Ajuda a validacao de origem em mutacoes e serve de base publica para links de reset |
 | `NEXT_PUBLIC_APP_URL` | Mesmo cenario acima | Fallback para a mesma validacao e consumo frontend |
 
 ### Observacoes importantes
@@ -448,6 +514,7 @@ Essas variaveis sao aceitas pelo codigo, embora nao venham preenchidas no `env.e
 - `FORCE_HTTP` e `GDMS_SYNC_INTERVAL_MS` aparecem no `env.example` e no `docker-compose.yml`, mas nao possuem consumo direto no codigo atual do backend.
 - `JWT_SECRET` com menos de 32 caracteres quebra a inicializacao do fluxo de autenticacao.
 - `INTERNAL_API_KEY` com menos de 24 caracteres nao eh aceita no fluxo `requireRequestAuthOrInternal(...)`.
+- `APP_BASE_URL` e `APP_URL` nao sao intercambiaveis: o primeiro eh interno ao Compose; o segundo precisa ser acessivel pelo navegador do usuario.
 
 ## Execucao Local
 
@@ -464,8 +531,10 @@ Ajuste pelo menos:
 - `COOKIE_SECURE=false`
 - `DATABASE_URL`
 - `JWT_SECRET`
+- `APP_URL`
 - `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` e `SUPERADMIN_NAME`
 - `GDMS_CLIENT_ID` e `GDMS_CLIENT_SECRET` se quiser integrar o GDMS desde o inicio
+- `EMAIL_*` se quiser testar o fluxo de recuperacao de senha por email
 
 ### 2. Subir banco local
 
@@ -523,7 +592,10 @@ Antes do primeiro `up`, valide:
 - `INTERNAL_API_KEY` com 24+ caracteres.
 - `COOKIE_SECURE=true` em ambiente HTTPS.
 - `DATABASE_URL` apontando para `mysql:3307` dentro do Compose atual.
+- `APP_URL` apontando para a URL publica real da aplicacao.
 - `APP_BASE_URL=http://web:3000` para o worker.
+- `PASSWORD_RESET_BASE_URL` se os links de email precisarem usar um host diferente do `APP_URL`.
+- credenciais SMTP preenchidas se a recuperacao de senha por email estiver habilitada.
 - Credenciais GDMS preenchidas se a integracao estiver habilitada.
 - Politica de backup do volume `mysql_data`.
 
@@ -540,7 +612,7 @@ docker compose ps
 docker compose logs -f mysql
 docker compose logs -f web
 docker compose logs -f worker
-curl http://localhost:3001/api/health
+curl http://localhost:3200/api/health
 ```
 
 O fluxo de startup real do `web` eh:
@@ -568,7 +640,7 @@ Pela interface:
 Por terminal:
 
 ```bash
-curl -X POST http://localhost:3001/api/integrations/gdms/sync \
+curl -X POST http://localhost:3200/api/integrations/gdms/sync \
   -H "x-internal-api-key: SUA_CHAVE_INTERNA"
 ```
 
@@ -608,6 +680,8 @@ docker compose exec mysql sh -lc 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" "$MY
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
 - `GET /api/me`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
 - `POST /api/register`
 - `POST /api/auth/register`
 
@@ -639,6 +713,8 @@ docker compose exec mysql sh -lc 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" "$MY
 
 - `GET /api/users`
 - `POST /api/users`
+- `PATCH /api/users/[id]`
+- `DELETE /api/users/[id]`
 
 ## Scripts Disponiveis
 
@@ -672,6 +748,7 @@ Checklist:
 - confirme `DATABASE_URL` com host `mysql` e porta `3307` dentro do Compose;
 - valide se `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD` e `DATABASE_URL` estao coerentes;
 - acompanhe `docker compose logs -f mysql`;
+- se a falha comecou apos mexer no schema ou no bootstrap, reconstrua a imagem `web`;
 - reexecute o schema:
 
 ```bash
@@ -686,6 +763,40 @@ Esses erros sao esperados quando a mutacao nao respeita a politica de origem/coo
 - atras de reverse proxy, encaminhe `X-Forwarded-Host` e `X-Forwarded-Proto`;
 - configure `APP_URL` ou `NEXT_PUBLIC_APP_URL` se houver dominio publico;
 - chamadas `POST`, `PATCH` e `DELETE` com cookie exigem `x-csrf-token`; a UI ja faz isso via [`services/api.ts`](./services/api.ts).
+
+### Clique em `Esqueceu a senha?` nao faz nada
+
+Sintoma comum:
+
+- o usuario clica no link do login, mas continua na mesma tela.
+
+Checklist:
+
+- confirme se `/forgot-password` e `/reset-password` continuam definidos como rotas publicas no [`middleware.ts`](./middleware.ts);
+- se acabou de publicar ajuste de middleware, faca `docker compose up -d --build web`;
+- force refresh do navegador para descartar assets antigos.
+
+### Email de recuperacao chega com `0.0.0.0`, nome do container ou host interno
+
+O link de reset precisa usar uma URL publica/acessivel pelo navegador. O nome do container `web` ou `monitoring-web` nao serve para o usuario final fora da rede Docker.
+
+Checklist:
+
+- configure `APP_URL` com o host real da aplicacao, por exemplo `http://localhost:3200` em ambiente local ou `https://app.seu-dominio.com` em producao;
+- use `PASSWORD_RESET_BASE_URL` apenas se o host do email precisar ser diferente do `APP_URL`;
+- nao use `APP_BASE_URL=http://web:3000` como base de link em email; essa URL existe apenas para trafego interno do worker.
+
+### `docker compose up` falha ao publicar a porta do `web`
+
+Sintoma comum no Windows:
+
+- erro de bind ao expor `0.0.0.0:3001`.
+
+Checklist:
+
+- verifique se a porta escolhida nao esta em faixa reservada do Windows;
+- no stack atual o valor recomendado eh `HOST_PORT=3200`;
+- valide portas em uso/reservadas antes de insistir no mesmo host port.
 
 ### Worker nao cria APs novos
 
