@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useThemeStore } from "@store/theme";
 import { buildApiHeaders } from "@services/api";
-import ThemeToggle from "@components/ThemeToggle";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faRightFromBracket,
@@ -11,6 +11,8 @@ import {
   faRotateRight,
   faExpand,
   faCompress,
+  faMoon,
+  faSun,
 } from "@fortawesome/free-solid-svg-icons";
 
 /**
@@ -77,6 +79,10 @@ export default function TopBar() {
     }
   }, []);
 
+  // ===== Tema
+  const { resolvedTheme, toggle: toggleTheme } = useThemeStore();
+  const isLight = resolvedTheme === "light";
+
   // ===== Logout
   async function handleLogout() {
     try {
@@ -137,7 +143,14 @@ export default function TopBar() {
               </button>
 
               {/* Tema */}
-              <ThemeToggle />
+              <button
+                onClick={toggleTheme}
+                className="surface-soft-hover grid h-8 w-8 place-items-center rounded-lg sm:h-9 sm:w-9"
+                title={isLight ? "Mudar para Dark" : "Mudar para Light"}
+                aria-label="Alternar tema"
+              >
+                <FontAwesomeIcon icon={isLight ? faSun : faMoon} className="h-4 w-4" />
+              </button>
 
               {/* Sair */}
               <button

@@ -6,8 +6,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faLock, faTowerBroadcast, faUser } from "@fortawesome/free-solid-svg-icons";
+import { faEnvelope, faTowerBroadcast } from "@fortawesome/free-solid-svg-icons";
+import AuthInput from "@components/AuthInput";
 import AuthParticles from "@components/AuthParticles";
+import PasswordInput from "@components/PasswordInput";
 import { buildApiHeaders } from "@services/api";
 
 const ETHERIUM_LOGO = {
@@ -102,49 +104,28 @@ export default function LoginPage() {
             </div>
             <div className="surface-soft inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-muted">
               <FontAwesomeIcon icon={faTowerBroadcast} className="h-4 w-4" />
-              Monitoramento de APs
+              Stats A.P
             </div>
           </div>
         </div>
 
         <div className="glass rounded-b-3xl px-6 py-8 sm:px-10">
           <form className="space-y-4" onSubmit={onSubmit}>
-            <label className="block">
-              <span className="sr-only">Email</span>
-              <div className="relative">
-                <span className="text-muted absolute left-3 top-1/2 -translate-y-1/2">
-                  <FontAwesomeIcon icon={faUser} className="h-4 w-4" />
-                </span>
-                <input
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  placeholder="Email"
-                  className="surface-field h-11 w-full rounded-xl pl-9 pr-3 outline-none focus:ring-2 focus:ring-emerald-400"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-              </div>
-            </label>
+            <AuthInput
+              autoComplete="email"
+              icon={faEnvelope}
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={setEmail}
+            />
 
-            <label className="block">
-              <span className="sr-only">Senha</span>
-              <div className="relative">
-                <span className="text-muted absolute left-3 top-1/2 -translate-y-1/2">
-                  <FontAwesomeIcon icon={faLock} className="h-4 w-4" />
-                </span>
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="Password"
-                  className="surface-field h-11 w-full rounded-xl pl-9 pr-3 outline-none focus:ring-2 focus:ring-emerald-400"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
-              </div>
-            </label>
+            <PasswordInput
+              autoComplete="current-password"
+              placeholder="Senha"
+              value={password}
+              onChange={setPassword}
+            />
 
             {error && (
               <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300">

@@ -25,8 +25,10 @@
 - [Visao Executiva](#visao-executiva)
 - [Stack e Capacidades](#stack-e-capacidades)
 - [Arquitetura da Solucao](#arquitetura-da-solucao)
+- [Padrao de Integracao GWN/GDMS](#padrao-de-integracao-gwngdms)
 - [Fluxos Criticos](#fluxos-criticos)
 - [Dominios Funcionais](#dominios-funcionais)
+- [Ajustes de Interface e Tempo Real](#ajustes-de-interface-e-tempo-real)
 - [Modelo de Dados](#modelo-de-dados)
 - [Estrutura Completa do Repositorio](#estrutura-completa-do-repositorio)
 - [Variaveis de Ambiente](#variaveis-de-ambiente)
@@ -46,23 +48,25 @@ O projeto entrega uma camada operacional completa para inventario, monitoramento
 - recuperacao de senha por email com token temporario e paginas dedicadas de solicitacao/reset;
 - mapa operacional com APs posicionados, filtros, busca e fallback automatico para OpenStreetMap;
 - dashboard com totais locais e consolidacao de clientes por rede via GDMS;
+- notificacoes flutuantes em tempo real quando um AP fica offline ou volta para online;
 - fila de pendencias para APs sem coordenadas, com sincronizacao manual e tratamento em lotes;
 - area administrativa para gestao de usuarios com separacao por papeis `USER`, `ADMIN` e `SUPERADMIN`, incluindo bloqueio, suspensao temporaria, reativacao, exclusao e politica de senha;
 - worker dedicado para sincronizacao periodica com o GDMS usando `x-internal-api-key`;
-- stream SSE para refletir alteracoes de APs e status em tempo real nas telas principais.
+- stream SSE para refletir alteracoes de APs e status em tempo real nas telas principais;
+- shell autenticado com topbar operacional, toggle rapido de tema light/dark e footer institucional com contato operacional.
 
 ## Stack e Capacidades
 
 | Camada | Implementacao | Papel no sistema |
 | --- | --- | --- |
-| Frontend | Next.js 14 App Router, React 18, TypeScript, Tailwind CSS, Framer Motion | Shell autenticado, mapa, dashboard, formularios e navegacao |
+| Frontend | Next.js 14 App Router, React 18, TypeScript, Tailwind CSS, Framer Motion | Shell autenticado, mapa, dashboard, formularios, login e navegacao |
 | Mapa | `maplibre-gl` com tiles ArcGIS e fallback para OSM | Visualizacao geografica dos APs e operacao em campo |
 | Backend | Route Handlers em `app/api/*` | API interna, autenticacao, RBAC, integracoes e healthcheck |
 | Seguranca | `jose`, `bcryptjs`, middleware customizado, `zod` | JWT, cookies, validacao de origem, CSRF e validacao de payload |
 | Email | `nodemailer` + SMTP autenticado | Entrega de link de redefinicao de senha |
 | Banco | MySQL 8 + `mysql2/promise` + SQL direto | Persistencia de `Antenna`, `StatusHistory`, `User`, `PasswordResetToken` e `gdms_token` |
 | Integracao | GDMS OAuth Client Credentials + APIs de redes/APs | Importacao de inventario, status e clientes por rede |
-| Tempo real | Server-Sent Events em `/api/events` | Atualizacao assíncrona da UI sem polling agressivo |
+| Tempo real | Server-Sent Events em `/api/events` | Atualizacao assincrona da UI, refresh seletivo e notificacoes flutuantes |
 | Infra | Docker multi-stage + Docker Compose | Servicos `mysql`, `web` e `worker` com healthchecks |
 
 ## Arquitetura da Solucao
@@ -109,6 +113,97 @@ flowchart LR
 - O container `web` inicializa o banco e garante o superadmin via [`scripts/docker-entrypoint.sh`](./scripts/docker-entrypoint.sh).
 - O container `worker` nao fala direto com o GDMS em nome da UI; ele chama a API interna de sincronizacao, preservando a mesma regra de negocio do backend.
 - Links enviados por email devem apontar para uma URL publica/acessivel pelo navegador; `APP_BASE_URL=http://web:3000` continua restrita ao trafego interno do worker.
+- O tema e sincronizado globalmente por [`components/ThemeSync.tsx`](./components/ThemeSync.tsx), carregado em [`app/layout.tsx`](./app/layout.tsx), sem depender de cada pagina individualmente.
+
+## Padrao de Integracao GWN/GDMS
+
+### Escopo da integracao
+
+- A UI nao chama a API da Grandstream diretamente; toda a comunicacao externa sai do backend `web`.
+- Neste repositorio, "GWN/GDMS" representa a camada cloud da Grandstream consumida via OAuth + endpoints `/oapi/...`.
+- O `worker` nao implementa um cliente GDMS proprio. Ele apenas agenda chamadas internas contra o `web`, reaproveitando a mesma regra de negocio das rotas.
+- As rotas de integracao aceitam usuario autenticado `ADMIN`/`SUPERADMIN` ou chamada interna com `x-internal-api-key`, sempre com rate limit.
+
+### Componentes e responsabilidades
+
+| Camada | Arquivo | Responsabilidade |
+| --- | --- | --- |
+| Token OAuth | [`lib/gdmsToken.ts`](./lib/gdmsToken.ts) | Resolve token com ordem memoria -> tabela `gdms_token` -> refresh OAuth |
+| Cliente GDMS | [`services/gdms.ts`](./services/gdms.ts) | Assina requests, pagina redes/APs, normaliza status, clientes e coordenadas |
+| Sync persistente | [`app/api/integrations/gdms/sync/route.ts`](./app/api/integrations/gdms/sync/route.ts) | Persiste inventario e status, grava `StatusHistory` e emite SSE |
+| Diagnostico | [`app/api/integrations/gdms/ping/route.ts`](./app/api/integrations/gdms/ping/route.ts) | Testa acesso remoto a redes e APs sem alterar o banco |
+| Token ops | [`app/api/integrations/gdms/token/route.ts`](./app/api/integrations/gdms/token/route.ts) | Mostra expiracao e permite refresh manual do token |
+| Consulta ao vivo | [`app/api/stats/network-clients/route.ts`](./app/api/stats/network-clients/route.ts) | Calcula clientes por rede diretamente do GDMS, sem depender apenas do snapshot local |
+| Agendamento | [`scripts/gdms-cron.mjs`](./scripts/gdms-cron.mjs) | Dispara sincronizacao periodica contra `APP_BASE_URL` |
+
+### Sequencia padronizada da conexao
+
+```mermaid
+sequenceDiagram
+  participant W as Worker ou Admin
+  participant API as app/api/integrations/gdms/*
+  participant TOK as lib/gdmsToken.ts
+  participant DB as MySQL
+  participant GDMS as GWN/GDMS Cloud
+  participant SSE as lib/sse.ts
+  participant UI as Browser autenticado
+
+  W->>API: Ping, token ou sync
+  API->>TOK: getAccessToken()
+  alt Token valido em memoria
+    TOK-->>API: Reutiliza token
+  else Token valido em gdms_token
+    TOK->>DB: SELECT gdms_token
+    DB-->>TOK: accessToken + expiresAt
+    TOK-->>API: Reutiliza token persistido
+  else Token ausente ou expirando
+    TOK->>GDMS: POST OAuth client_credentials
+    GDMS-->>TOK: access_token + expires_in
+    TOK->>DB: UPSERT gdms_token
+    TOK-->>API: Novo token
+  end
+  API->>GDMS: POST /oapi/... com access_token, appID, timestamp e signature
+  GDMS-->>API: Redes, APs e clientes
+  API->>DB: INSERT/UPDATE em Antenna e StatusHistory
+  API->>SSE: emit(antenna.* / status.changed)
+  SSE-->>UI: Atualiza mapa, cards, filtros e toasts
+```
+
+### Logica padronizada da chamada
+
+1. `services/gdms.ts` valida `GDMS_BASE`, `GDMS_CLIENT_ID` e `GDMS_CLIENT_SECRET`.
+2. `lib/gdmsToken.ts` resolve o token na ordem memoria -> banco -> OAuth.
+3. O backend serializa o body JSON, gera hash SHA-256 e calcula a `signature`.
+4. A chamada segue via `POST` para o GDMS com `access_token`, `appID`, `timestamp` e `signature`.
+5. Respostas HTTP nao-2xx ou `retCode != 0` sao tratadas como erro de integracao.
+6. O retorno bruto e normalizado antes de persistencia, resposta da API ou emissao de SSE.
+
+### Regras atuais de normalizacao
+
+| Campo local | Origem GDMS | Regra atual |
+| --- | --- | --- |
+| `gdmsApId` | `id`, `apId`, `deviceId`, `mac`, `serialNumber`, `uuid` | Primeiro identificador nao vazio encontrado |
+| `status` | `status` numerico do AP | `1 => UP`; qualquer outro valor => `DOWN` |
+| `lat` / `lon` | `ap_latitude`, `latitude`, `lat`, `gps.*`, `location.*`, `position.*` | Primeiro numero disponivel |
+| `clients` | `clients`, `clientCount`, `stationCount`, `users` | Inteiro positivo; fallback `0` |
+| `networkId` / `networkName` | Lista de redes + contexto do loop de APs | Sempre preenchidos no fluxo de sincronizacao |
+
+### Modos operacionais de integracao
+
+| Modo | Endpoint | Efeito |
+| --- | --- | --- |
+| Full sync | `POST /api/integrations/gdms/sync` | Cria APs novos, atualiza metadados, tenta preencher coordenadas faltantes, registra historico e emite `antenna.created`, `antenna.updated` e `status.changed` |
+| Status-only | `POST /api/integrations/gdms/sync?mode=status` | Atualiza somente APs ja existentes, grava mudancas de status e funciona como modo padrao do worker |
+| Ping | `GET /api/integrations/gdms/ping` | Valida token + acesso remoto sem persistir inventario |
+| Token info/refresh | `GET`/`POST /api/integrations/gdms/token` | Observa expiracao e forca renovacao OAuth |
+
+### Regras de padronizacao recomendadas
+
+- Nunca chamar o GDMS a partir do browser; qualquer nova integracao deve entrar por `services/gdms.ts` ou modulo equivalente server-side.
+- Nao duplicar a regra de negocio do sync no worker. O padrao correto continua sendo worker -> API interna -> servicos -> banco/SSE.
+- Em producao, `GDMS_BASE` e `GDMS_OAUTH_URL` devem usar HTTPS; o proprio codigo rejeita HTTP.
+- Para ambiente Docker, `APP_BASE_URL` deve apontar para o nome do servico (`http://web:3000` no stack atual), nao para `localhost`.
+- Fluxos que so precisam de status devem preferir `mode=status`; carga inicial e reconciliacao estrutural devem usar full sync.
 
 ## Fluxos Criticos
 
@@ -177,14 +272,16 @@ sequenceDiagram
     end
   end
   S->>E: emit(antenna.* / status.changed)
-  E-->>UI: Atualiza mapa, cards e filas
+  E-->>UI: Atualiza mapa, cards, filas e notificacoes
 ```
 
 ### 3. Tempo real na interface
 
 - `/api/events` abre um stream SSE autenticado.
 - Eventos nomeados usados hoje: `connected`, `ping`, `antenna.created`, `antenna.updated`, `antenna.deleted` e `status.changed`.
+- O payload de `status.changed` pode incluir `id`, `name`, `networkName`, `previousStatus`, `status` e `at`.
 - Dashboard, mapa, filtros e settings reagem a esses eventos para revalidar dados locais sem depender apenas de refresh manual.
+- O componente [`components/AntennaStatusNotifications.tsx`](./components/AntennaStatusNotifications.tsx) exibe toast flutuante quando um AP muda de `UP` para `DOWN` ou de `DOWN` para `UP`.
 
 ## Dominios Funcionais
 
@@ -199,6 +296,40 @@ sequenceDiagram
 | Filter Cluster | `/filter-cluster` | Busca operacional, paginacao, exportacao CSV, alteracao de status e exclusao | Leitura para autenticado; mutacao para `ADMIN`/`SUPERADMIN` |
 | Settings | `/settings` | Fila de APs sem coordenadas e sincronizacao manual GDMS | `ADMIN`/`SUPERADMIN` |
 | Admin | `/admin` | Listagem, criacao, bloqueio, suspensao, reativacao e exclusao de usuarios | `SUPERADMIN` |
+
+## Ajustes de Interface e Tempo Real
+
+### Login e identidade visual
+
+- A tela [`/login`](./app/(auth)/login/page.tsx) usa o rotulo visual `Stats A.P` com icone de antena (`faTowerBroadcast`).
+- O campo de email reutiliza [`components/AuthInput.tsx`](./components/AuthInput.tsx) com icone de envelope.
+- O campo de senha reutiliza [`components/PasswordInput.tsx`](./components/PasswordInput.tsx), incluindo toggle visual com `eye`/`eye-slash`.
+- As telas de recuperacao e reset seguem a mesma linha visual e os mesmos componentes base.
+
+### Topbar e tema
+
+- A [`components/TopBar.tsx`](./components/TopBar.tsx) mantem o layout operacional original com busca, reload, fullscreen, toggle de tema e logout.
+- O toggle exposto na topbar alterna rapidamente entre `light` e `dark`.
+- A persistencia do tema continua centralizada em [`store/theme.ts`](./store/theme.ts), incluindo suporte interno a `system` para sincronizacao com preferencia do navegador.
+
+### Footer institucional
+
+- O footer usa uma unica logo da Etheriumtech.
+- O CTA `Fale conosco por email` abre `mailto:infraestrutura@etheriumtech.com.br`.
+- O bloco `Powered by` referencia os responsaveis com link direto para LinkedIn:
+
+| Nome | Papel | Link |
+| --- | --- | --- |
+| Jeferson Oliveira | Network Engineer | `https://www.linkedin.com/in/jeferson-rocha-1b494b1b5` |
+| Marcos Ribeiro | Software Engineer | `https://linkedin.com/in/marcos-ribeiro-de-sousa-782b7782` |
+| Mickael Lelis | DevOps/SRE | `https://linkedin.com/in/mickael-l-079743133` |
+
+### Notificacoes de status
+
+- O componente [`components/AntennaStatusNotifications.tsx`](./components/AntennaStatusNotifications.tsx) fica carregado globalmente no shell autenticado via [`components/LayoutShell.tsx`](./components/LayoutShell.tsx).
+- Quando um AP entra em `DOWN`, a interface mostra `AP offline`.
+- Quando um AP retorna para `UP`, a interface mostra `AP online novamente`.
+- As notificacoes dependem do evento SSE `status.changed`, emitido tanto por alteracao manual em [`app/api/antennas/[id]/route.ts`](./app/api/antennas/[id]/route.ts) quanto pela sincronizacao GDMS em [`app/api/integrations/gdms/sync/route.ts`](./app/api/integrations/gdms/sync/route.ts).
 
 ## Modelo de Dados
 
@@ -358,6 +489,7 @@ Diretorios gerados ou externos omitidos propositalmente: `.git/`, `.next/` e `no
 |   `-- loading.tsx
 |-- components
 |   |-- AntennaToolbar.tsx
+|   |-- AntennaStatusNotifications.tsx
 |   |-- AuthInput.tsx
 |   |-- AuthParticles.tsx
 |   |-- DashboardCards.tsx
@@ -369,6 +501,7 @@ Diretorios gerados ou externos omitidos propositalmente: `.git/`, `.next/` e `no
 |   |-- PasswordInput.tsx
 |   |-- Sidebar.tsx
 |   |-- ThemeScript.tsx
+|   |-- ThemeSync.tsx
 |   |-- ThemeToggle.tsx
 |   |-- TopBar.tsx
 |   `-- Client
@@ -390,8 +523,6 @@ Diretorios gerados ou externos omitidos propositalmente: `.git/`, `.next/` e `no
 |   |-- userStatus.ts
 |   |-- validators.ts
 |   `-- validatorsAuth.ts
-|-- prisma
-|   `-- (diretorio reservado; sem arquivos versionados)
 |-- public
 |   |-- icons.svg
 |   `-- logo_etherium.png
@@ -428,7 +559,6 @@ Diretorios gerados ou externos omitidos propositalmente: `.git/`, `.next/` e `no
 | `public/` | Assets estaticos do projeto |
 | `store/` | Estado global de UI/tema |
 | `styles/` | CSS global |
-| `prisma/` | Diretorio reservado; sem uso ativo no fluxo atual |
 
 ## Variaveis de Ambiente
 
@@ -462,7 +592,7 @@ Use [`env.example`](./env.example) como baseline. Abaixo estao as chaves que rea
 | `MYSQL_PASSWORD` | Sim | `change-me-app-password` | Senha do usuario da aplicacao |
 | `MYSQL_ROOT_PASSWORD` | Sim | `change-me-root-password` | Senha de administracao do MySQL |
 | `DATABASE_URL` | Sim | `mysql://monitoring_app:...@mysql:3307/monitoring_grandstream` | O host correto no Compose eh `mysql`, nao `localhost` |
-| `MYSQL_POOL_SIZE` | Opcional | `10` | Suportada por [`lib/mysql.ts`](./lib/mysql.ts), embora nao conste no `env.example` |
+| `MYSQL_POOL_SIZE` | Opcional | `10` | Controla o limite do pool em [`lib/mysql.ts`](./lib/mysql.ts) e ja consta no `env.example` |
 
 ### GDMS e sincronizacao
 
@@ -507,7 +637,7 @@ Essas variaveis sao aceitas pelo codigo para origem publica e fallback do fronte
 | Variavel | Quando usar | Papel |
 | --- | --- | --- |
 | `APP_URL` | Reverse proxy, dominio publico, HTTPS terminado fora do container | Ajuda a validacao de origem em mutacoes e serve de base publica para links de reset |
-| `NEXT_PUBLIC_APP_URL` | Mesmo cenario acima | Fallback para a mesma validacao e consumo frontend |
+| `NEXT_PUBLIC_APP_URL` | Mesmo cenario acima | Fallback para a mesma validacao, consumo frontend e build da imagem Docker |
 
 ### Observacoes importantes
 
@@ -532,6 +662,7 @@ Ajuste pelo menos:
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `APP_URL`
+- `NEXT_PUBLIC_APP_URL` se quiser alinhar a URL publica consumida no frontend e no build Docker
 - `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` e `SUPERADMIN_NAME`
 - `GDMS_CLIENT_ID` e `GDMS_CLIENT_SECRET` se quiser integrar o GDMS desde o inicio
 - `EMAIL_*` se quiser testar o fluxo de recuperacao de senha por email
@@ -580,9 +711,15 @@ Abra `http://localhost:3000`.
 
 | Servico | Funcao | Healthcheck | Porta publicada |
 | --- | --- | --- | --- |
-| `mysql` | Persistencia MySQL 8.4 | `mysqladmin ping` | `${MYSQL_HOST_PORT}:${MYSQL_PORT}` |
-| `web` | UI Next.js, APIs, SSE, bootstrap de schema e seed | `GET /api/health` | `${HOST_PORT}:${PORT}` |
+| `mysql` | Persistencia MySQL 8.4 | `mysqladmin ping` em `monitoring-mysql` | `${MYSQL_HOST_PORT}:${MYSQL_PORT}` |
+| `web` | UI Next.js, APIs, SSE, bootstrap de schema e seed | `GET /api/health` em `monitoring-web` | `${HOST_PORT}:${PORT}` |
 | `worker` | Cron de sincronizacao GDMS | Depende do `web` healthy | Nao publica porta |
+
+### Convencoes atuais do Compose
+
+- `web` e `worker` carregam variaveis operacionais a partir de `./.env` via `env_file`.
+- O build da imagem recebe `NEXT_PUBLIC_APP_NAME` e `NEXT_PUBLIC_APP_URL` como `build.args`.
+- Os `healthcheck`s nao usam `localhost` ou `127.0.0.1`; a stack usa os nomes de container/servico para evitar ambiguidade em execucao de producao.
 
 ### Pre-flight de producao
 
@@ -593,11 +730,13 @@ Antes do primeiro `up`, valide:
 - `COOKIE_SECURE=true` em ambiente HTTPS.
 - `DATABASE_URL` apontando para `mysql:3307` dentro do Compose atual.
 - `APP_URL` apontando para a URL publica real da aplicacao.
+- `NEXT_PUBLIC_APP_URL` alinhada com a URL publica quando o frontend precisar refletir esse host.
 - `APP_BASE_URL=http://web:3000` para o worker.
 - `PASSWORD_RESET_BASE_URL` se os links de email precisarem usar um host diferente do `APP_URL`.
 - credenciais SMTP preenchidas se a recuperacao de senha por email estiver habilitada.
 - Credenciais GDMS preenchidas se a integracao estiver habilitada.
 - Politica de backup do volume `mysql_data`.
+- Healthchecks do Compose devem continuar apontando para os nomes de servico/container, nao para `localhost`.
 
 ### Subida inicial
 
@@ -669,6 +808,8 @@ docker compose exec mysql sh -lc 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" "$MY
 | Teste GDMS | `GET /api/integrations/gdms/ping` | Confirma acesso ao inventario remoto |
 | Estado do token GDMS | `GET /api/integrations/gdms/token` | Mostra existencia e expiracao do token persistido |
 | Refresh manual do token | `POST /api/integrations/gdms/token` | Forca novo token OAuth |
+| Sync full manual | `POST /api/integrations/gdms/sync` | Reconcilia inventario, status e coordenadas faltantes |
+| Sync status-only | `POST /api/integrations/gdms/sync?mode=status` | Atualiza somente status dos APs ja conhecidos |
 | Logs do worker | `docker compose logs -f worker` | Diagnostica ciclos de sincronizacao |
 | Logs da web | `docker compose logs -f web` | Diagnostica autenticacao, DB, SSE e APIs |
 | Eventos em tempo real | `GET /api/events` | Stream SSE autenticado para UI |
@@ -811,6 +952,32 @@ Nesse modo ele apenas atualiza status de APs ja existentes. Solucao:
 - execute uma sincronizacao completa inicial em `/settings`; ou
 - chame manualmente `POST /api/integrations/gdms/sync` sem `mode=status`.
 
+### `GDMS /oapi/... failed` ou `retCode != 0`
+
+Quando a falha vem do cliente GDMS, ela normalmente aponta para autenticacao, assinatura ou rejeicao do endpoint remoto.
+
+Checklist:
+
+- confirme `GDMS_CLIENT_ID`, `GDMS_CLIENT_SECRET`, `GDMS_BASE` e `GDMS_OAUTH_URL`;
+- em producao, valide se `GDMS_BASE` e `GDMS_OAUTH_URL` estao em HTTPS;
+- confira hora/data do host ou container, porque a assinatura usa `timestamp`;
+- rode `GET /api/integrations/gdms/token` para verificar se existe token valido;
+- se necessario, force `POST /api/integrations/gdms/token`;
+- execute `GET /api/integrations/gdms/ping` para separar falha de token de falha no sync;
+- acompanhe `docker compose logs -f web`.
+
+### Worker responde `401`, `403` ou nao alcanza o `web`
+
+O worker nao deve usar `localhost` para falar com a API interna dentro do Docker.
+
+Checklist:
+
+- mantenha `APP_BASE_URL=http://web:3000` no Compose atual;
+- nao aponte `APP_BASE_URL` para `http://localhost:3200` dentro do container;
+- valide se `INTERNAL_API_KEY` esta identica em `web` e `worker`;
+- confirme se o `web` ja ficou healthy antes de analisar os logs do worker;
+- verifique se `SYNC_PATH` continua coerente com o modo desejado (`full` ou `status`).
+
 ### Dashboard local funciona, mas clientes por rede falham
 
 `GET /api/stats` depende do banco local. Ja `GET /api/stats/network-clients` depende do GDMS.
@@ -835,6 +1002,18 @@ Logo, APs com `lat=0` e `lon=0` ficam fora do mapa. Se o GDMS nao devolver coord
 - finalize a geolocalizacao em `/settings`;
 - confirme se a importacao completa trouxe `lat/lng`;
 - lembre que APs recem-criados manualmente nascem com status `DOWN`.
+
+### Toast de AP offline/online nao aparece
+
+Essas notificacoes dependem de stream SSE autenticado e do evento `status.changed`.
+
+Checklist:
+
+- confirme que o usuario esta em uma rota do shell autenticado, onde [`components/LayoutShell.tsx`](./components/LayoutShell.tsx) monta [`components/AntennaStatusNotifications.tsx`](./components/AntennaStatusNotifications.tsx);
+- verifique se `GET /api/events` esta conectando sem erro no navegador;
+- lembre que `antenna.created` nao gera esse toast; o componente reage apenas a `status.changed`;
+- em `mode=status`, o AP precisa ja existir no banco para haver transicao observavel;
+- se houver reverse proxy, evite buffering agressivo e timeout curto na rota SSE.
 
 ### Sessao nao persiste em HTTPS ou proxy
 
