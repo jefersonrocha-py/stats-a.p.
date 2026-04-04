@@ -2,8 +2,9 @@
 
 import { useMemo } from "react";
 import Image from "next/image";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faInstagram, faLinkedin } from "@fortawesome/free-brands-svg-icons";
+import { faLinkedin } from "@fortawesome/free-brands-svg-icons";
 import { faEnvelope, faGlobe, faLocationDot } from "@fortawesome/free-solid-svg-icons";
 
 const CONTACT = {
@@ -11,17 +12,28 @@ const CONTACT = {
   address: "Rua Bonnard, 980 - Bloco 10 - Green Valley Office Park - Barueri/SP",
 };
 
-const SOCIAL = {
-  site: "https://etheriumtech.com.br",
-  instagram: "#",
-  linkedin: "#",
-};
+const CHANNELS = [
+  { href: "https://etheriumtech.com.br", label: "Site", icon: faGlobe },
+  { href: `mailto:${CONTACT.email}`, label: "Email", icon: faEnvelope },
+] as const;
 
 const TEAM = [
-  { name: "Jeferson Oliveira", role: "Network Engineer" },
-  { name: "Marcos Ribeiro", role: "Software Engineer" },
-  { name: "Mickael Oliveira", role: "DevOps/SRE" },
-];
+  {
+    name: "Jeferson Oliveira",
+    role: "Network Engineer",
+    href: "https://www.linkedin.com/in/jeferson-rocha-1b494b1b5",
+  },
+  {
+    name: "Marcos Ribeiro",
+    role: "Software Engineer",
+    href: "https://linkedin.com/in/marcos-ribeiro-de-sousa-782b7782",
+  },
+  {
+    name: "Mickael Lelis",
+    role: "DevOps/SRE",
+    href: "https://linkedin.com/in/mickael-l-079743133",
+  },
+] as const;
 
 const PRODUCT_COPY =
   "Stats A.P monitora APs Grandstream via GDMS, consolida status online/offline, exporta a base operacional e oferece visibilidade em mapa, dashboard e configuracoes.";
@@ -58,7 +70,7 @@ export default function Footer() {
               className="surface-soft-hover inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:focus-visible:ring-white/20"
             >
               <FontAwesomeIcon icon={faEnvelope} className="h-4 w-4" />
-              Fale conosco por e-mail
+              Fale conosco por email
             </a>
           </div>
 
@@ -72,9 +84,14 @@ export default function Footer() {
             <div className="space-y-3">
               <h2 className="text-sm font-semibold uppercase tracking-[0.22em] opacity-65">Canais</h2>
               <div className="flex items-center gap-2">
-                <IconButton href={SOCIAL.site} label="Site" icon={faGlobe} />
-                <IconButton href={SOCIAL.instagram} label="Instagram" icon={faInstagram} />
-                <IconButton href={SOCIAL.linkedin} label="LinkedIn" icon={faLinkedin} />
+                {CHANNELS.map((channel) => (
+                  <IconButton
+                    key={channel.label}
+                    href={channel.href}
+                    label={channel.label}
+                    icon={channel.icon}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -85,27 +102,15 @@ export default function Footer() {
             <div className="text-sm font-semibold uppercase tracking-[0.22em] opacity-65">Powered by</div>
             <ul className="mt-3 space-y-2 text-sm">
               {TEAM.map((member) => (
-                <li key={member.name} className="flex items-center gap-2">
-                  <span className="surface-soft inline-flex h-8 w-8 items-center justify-center rounded-full">
-                    <FontAwesomeIcon icon={faLinkedin} className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <strong>{member.name}</strong> <span className="opacity-70">- {member.role}</span>
-                  </span>
+                <li key={member.name}>
+                  <TeamLink href={member.href} name={member.name} role={member.role} />
                 </li>
               ))}
             </ul>
           </div>
 
           <div className="flex flex-col items-start gap-3 lg:items-end">
-            <Image
-              src="/logo_etherium.png"
-              alt="Etheriumtech"
-              width={220}
-              height={60}
-              className="h-10 w-auto"
-            />
-            <p className="text-xs opacity-70">© {year} Todos os direitos reservados.</p>
+            <p className="text-xs opacity-70">&copy; {year} Todos os direitos reservados.</p>
           </div>
         </div>
       </div>
@@ -118,7 +123,7 @@ function ContactLine({
   label,
   href,
 }: {
-  icon: any;
+  icon: IconDefinition;
   label: string;
   href?: string;
 }) {
@@ -149,18 +154,48 @@ function IconButton({
 }: {
   href: string;
   label: string;
-  icon: any;
+  icon: IconDefinition;
+}) {
+  const external = !href.startsWith("mailto:");
+
+  return (
+    <a
+      href={href}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noopener noreferrer" : undefined}
+      aria-label={label}
+      title={label}
+      className="surface-soft-hover inline-flex h-10 w-10 items-center justify-center rounded-2xl transition hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:focus-visible:ring-white/20"
+    >
+      <FontAwesomeIcon icon={icon} className="h-4 w-4" />
+    </a>
+  );
+}
+
+function TeamLink({
+  href,
+  name,
+  role,
+}: {
+  href: string;
+  name: string;
+  role: string;
 }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={label}
-      title={label}
-      className="surface-soft-hover inline-flex h-10 w-10 items-center justify-center rounded-2xl transition hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-black/20 dark:focus-visible:ring-white/20"
+      className="flex items-center gap-2 transition hover:opacity-100"
+      aria-label={`Abrir LinkedIn de ${name}`}
+      title={`LinkedIn de ${name}`}
     >
-      <FontAwesomeIcon icon={icon} className="h-4 w-4" />
+      <span className="surface-soft inline-flex h-8 w-8 items-center justify-center rounded-full">
+        <FontAwesomeIcon icon={faLinkedin} className="h-4 w-4" />
+      </span>
+      <span>
+        <strong>{name}</strong> <span className="opacity-70">- {role}</span>
+      </span>
     </a>
   );
 }

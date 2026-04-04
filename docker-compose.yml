@@ -2,6 +2,9 @@ x-app-image: &app_image
   build:
     context: .
     dockerfile: Dockerfile
+    args:
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
   image: ${APP_IMAGE}
   pull_policy: never
 
@@ -24,7 +27,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -P ${MYSQL_PORT} -uroot -p${MYSQL_ROOT_PASSWORD} --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h monitoring-mysql -P ${MYSQL_PORT} -uroot -p${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -36,47 +39,17 @@ services:
     <<: *app_image
     container_name: monitoring-web
     restart: unless-stopped
+    env_file:
+      - ./.env
     environment:
-      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME}
       NODE_ENV: ${NODE_ENV}
-      NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED}
-      HOST: ${HOST}
-      PORT: ${PORT}
-      HOST_PORT: ${HOST_PORT}
-      APP_URL: ${APP_URL}
-      DATABASE_URL: ${DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_DAYS: ${JWT_EXPIRES_DAYS}
-      COOKIE_SECURE: ${COOKIE_SECURE}
-      FORCE_HTTP: ${FORCE_HTTP}
-      ALLOW_SELF_REGISTER: ${ALLOW_SELF_REGISTER}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-      PASSWORD_RESET_BASE_URL: ${PASSWORD_RESET_BASE_URL}
-      PASSWORD_RESET_TOKEN_MINUTES: ${PASSWORD_RESET_TOKEN_MINUTES}
-      EMAIL_DEFAULT_FROM: ${EMAIL_DEFAULT_FROM}
-      EMAIL_TRANSPORT_DEFAULT_HOST: ${EMAIL_TRANSPORT_DEFAULT_HOST}
-      EMAIL_TRANSPORT_DEFAULT_PORT: ${EMAIL_TRANSPORT_DEFAULT_PORT}
-      EMAIL_TRANSPORT_DEFAULT_USERNAME: ${EMAIL_TRANSPORT_DEFAULT_USERNAME}
-      EMAIL_TRANSPORT_DEFAULT_PASSWORD: ${EMAIL_TRANSPORT_DEFAULT_PASSWORD}
-      EMAIL_TRANSPORT_DEFAULT_TLS: ${EMAIL_TRANSPORT_DEFAULT_TLS}
-      PASSBOLT_KEY_EMAIL: ${PASSBOLT_KEY_EMAIL}
-      GDMS_BASE: ${GDMS_BASE}
-      GDMS_OAUTH_URL: ${GDMS_OAUTH_URL}
-      GDMS_CLIENT_ID: ${GDMS_CLIENT_ID}
-      GDMS_CLIENT_SECRET: ${GDMS_CLIENT_SECRET}
-      GDMS_PAGE_SIZE: ${GDMS_PAGE_SIZE}
-      GDMS_SHOW: ${GDMS_SHOW}
-      GDMS_SYNC_INTERVAL_MS: ${GDMS_SYNC_INTERVAL_MS}
-      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
-      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
-      SUPERADMIN_NAME: ${SUPERADMIN_NAME}
     depends_on:
       mysql:
         condition: service_healthy
     ports:
       - "${HOST_PORT}:${PORT}"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://monitoring-web:' + (process.env.PORT || 3000) + '/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -88,6 +61,8 @@ services:
     <<: *app_image
     container_name: monitoring-gdms-cron
     restart: unless-stopped
+    env_file:
+      - ./.env
     environment:
       APP_BASE_URL: ${APP_BASE_URL}
       SYNC_PATH: ${SYNC_PATH}

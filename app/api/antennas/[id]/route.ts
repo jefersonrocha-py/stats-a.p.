@@ -155,7 +155,14 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     });
 
     if (statusChanged && data.status) {
-      emit("status.changed", { id: idNum, status: data.status });
+      emit("status.changed", {
+        id: idNum,
+        name: item.name,
+        networkName: item.networkName,
+        previousStatus: before.status,
+        status: data.status,
+        at: now.toISOString(),
+      });
     } else {
       emit("antenna.updated", { id: idNum });
     }

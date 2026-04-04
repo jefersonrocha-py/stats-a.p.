@@ -2,6 +2,7 @@
 
 import TopBar from "@components/TopBar";
 import Footer from "@components/Footer";
+import AntennaStatusNotifications from "@components/AntennaStatusNotifications";
 import { useUIStore } from "@store/ui";
 import { useEffect, useState } from "react";
 
@@ -21,6 +22,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       }`}
     >
       <TopBar />
+      <AntennaStatusNotifications />
       <main className="flex-1 p-4 md:p-6">{children}</main>
       <Footer />
     </div>

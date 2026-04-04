@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireRequestAuthOrInternal } from "@lib/auth";
 import { dbExecute, dbQueryOne, withTransaction } from "@lib/mysql";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "@lib/rateLimit";
+import { emit } from "@lib/sse";
 import { listAPsByNetwork, listNetworks } from "@services/gdms";
 
 export const runtime = "nodejs";
@@ -10,14 +11,37 @@ export const dynamic = "force-dynamic";
 
 type ExistingAntennaRow = RowDataPacket & {
   id: number;
+  name: string;
   status: string;
   lat: number;
   lon: number;
+  networkName: string | null;
 };
 
+type SyncEvent =
+  | {
+      event: "antenna.created";
+      payload: { id: number; name: string; networkName: string | null; status: string };
+    }
+  | {
+      event: "antenna.updated";
+      payload: { id: number; name: string; networkName: string | null; kind: "sync" };
+    }
+  | {
+      event: "status.changed";
+      payload: {
+        id: number;
+        name: string;
+        networkName: string | null;
+        previousStatus: string;
+        status: string;
+        at: string;
+      };
+    };
+
 type SyncOutcome =
-  | { kind: "created" }
-  | { kind: "updated"; statusChanged: boolean }
+  | { kind: "created"; emitEvent: SyncEvent }
+  | { kind: "updated"; statusChanged: boolean; emitEvent?: SyncEvent }
   | { kind: "skipped" };
 
 export async function POST(req: Request) {
@@ -55,7 +79,7 @@ export async function POST(req: Request) {
         try {
           const outcome = await withTransaction<SyncOutcome>(async (connection) => {
             const existing = await dbQueryOne<ExistingAntennaRow>(
-              "SELECT `id`, `status`, `lat`, `lon` FROM `Antenna` WHERE `gdmsApId` = ? LIMIT 1",
+              "SELECT `id`, `name`, `status`, `lat`, `lon`, `networkName` FROM `Antenna` WHERE `gdmsApId` = ? LIMIT 1",
               [ap.apId],
               connection
             );
@@ -87,7 +111,23 @@ export async function POST(req: Request) {
                 );
               }
 
-              return { kind: "updated", statusChanged: statusChangedNow };
+              return {
+                kind: "updated",
+                statusChanged: statusChangedNow,
+                emitEvent: statusChangedNow
+                  ? {
+                      event: "status.changed",
+                      payload: {
+                        id: existing.id,
+                        name: existing.name,
+                        networkName: existing.networkName,
+                        previousStatus: existing.status,
+                        status: ap.status,
+                        at: now.toISOString(),
+                      },
+                    }
+                  : undefined,
+              };
             }
 
             if (!existing) {
@@ -116,10 +156,27 @@ export async function POST(req: Request) {
                 connection
               );
 
-              return { kind: "created" };
+              return {
+                kind: "created",
+                emitEvent: {
+                  event: "antenna.created",
+                  payload: {
+                    id: result.insertId,
+                    name: ap.apName,
+                    networkName: ap.networkName ?? null,
+                    status: ap.status,
+                  },
+                },
+              };
             }
 
             const statusChangedNow = existing.status !== ap.status;
+            const nameChanged = existing.name !== ap.apName;
+            const networkChanged = existing.networkName !== (ap.networkName ?? null);
+            const coordsFilled =
+              Number(existing.lat) === 0 &&
+              Number(existing.lon) === 0 &&
+              (typeof ap.lat === "number" || typeof ap.lng === "number");
             const assignments = [
               "`name` = ?",
               "`networkId` = ?",
@@ -168,17 +225,47 @@ export async function POST(req: Request) {
               );
             }
 
-            return { kind: "updated", statusChanged: statusChangedNow };
+            return {
+              kind: "updated",
+              statusChanged: statusChangedNow,
+              emitEvent: statusChangedNow
+                ? {
+                    event: "status.changed",
+                    payload: {
+                      id: existing.id,
+                      name: ap.apName,
+                      networkName: ap.networkName ?? null,
+                      previousStatus: existing.status,
+                      status: ap.status,
+                      at: now.toISOString(),
+                    },
+                  }
+                : nameChanged || networkChanged || coordsFilled
+                  ? {
+                      event: "antenna.updated",
+                      payload: {
+                        id: existing.id,
+                        name: ap.apName,
+                        networkName: ap.networkName ?? null,
+                        kind: "sync",
+                      },
+                    }
+                  : undefined,
+            };
           });
 
           if (outcome.kind === "created") {
             created++;
+            emit(outcome.emitEvent.event, outcome.emitEvent.payload);
             continue;
           }
 
           if (outcome.kind === "updated") {
             updated++;
             if (outcome.statusChanged) statusChanged++;
+            if (outcome.emitEvent) {
+              emit(outcome.emitEvent.event, outcome.emitEvent.payload);
+            }
           }
         } catch (rowErr: any) {
           errors.push({ apId: ap.apId, reason: rowErr?.message ?? String(rowErr) });
