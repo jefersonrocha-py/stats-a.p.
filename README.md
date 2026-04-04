@@ -574,6 +574,7 @@ Use [`env.example`](./env.example) como baseline. Abaixo estao as chaves que rea
 | `PORT` | Sim | `3000` | Porta interna do container `web` |
 | `HOST_PORT` | Sim no Compose | `3200` | Porta exposta no host |
 | `APP_URL` | Recomendada | `http://localhost:3200` ou `https://seu-dominio.com` | URL publica usada em validacao de origem e como base para links de reset |
+| `TRUST_PROXY_HEADERS` | Nao | `false` | So use `true` atras de proxy reverso confiavel que sanitize `X-Forwarded-*` |
 | `JWT_SECRET` | Sim | segredo >= 32 chars | Obrigatorio para assinar/verificar JWT |
 | `JWT_EXPIRES_DAYS` | Nao | `7` | TTL do cookie de autenticacao |
 | `COOKIE_SECURE` | Sim em producao | `true` | Deve ficar `false` apenas em HTTP local |
@@ -585,13 +586,12 @@ Use [`env.example`](./env.example) como baseline. Abaixo estao as chaves que rea
 | Variavel | Obrigatoria | Exemplo | Observacao |
 | --- | --- | --- | --- |
 | `MYSQL_IMAGE` | Nao | `mysql:8.4` | Imagem do banco no Compose |
-| `MYSQL_PORT` | Sim no Compose | `3307` | Porta interna e externa configurada no stack atual |
-| `MYSQL_HOST_PORT` | Sim no Compose | `3307` | Porta publicada para acesso externo |
+| `MYSQL_PORT` | Sim no Compose | `3306` | Porta interna do MySQL dentro da rede Docker |
 | `MYSQL_DATABASE` | Sim | `monitoring_grandstream` | Banco principal |
 | `MYSQL_USER` | Sim | `monitoring_app` | Usuario da aplicacao |
 | `MYSQL_PASSWORD` | Sim | `change-me-app-password` | Senha do usuario da aplicacao |
 | `MYSQL_ROOT_PASSWORD` | Sim | `change-me-root-password` | Senha de administracao do MySQL |
-| `DATABASE_URL` | Sim | `mysql://monitoring_app:...@mysql:3307/monitoring_grandstream` | O host correto no Compose eh `mysql`, nao `localhost` |
+| `DATABASE_URL` | Sim | `mysql://monitoring_app:...@mysql:3306/monitoring_grandstream` | O host correto no Compose eh `mysql`, nao `localhost` |
 | `MYSQL_POOL_SIZE` | Opcional | `10` | Controla o limite do pool em [`lib/mysql.ts`](./lib/mysql.ts) e ja consta no `env.example` |
 
 ### GDMS e sincronizacao
@@ -629,6 +629,8 @@ Use [`env.example`](./env.example) como baseline. Abaixo estao as chaves que rea
 | `SUPERADMIN_EMAIL` | Recomendada | `admin@example.com` | Seed idempotente do superadmin |
 | `SUPERADMIN_PASSWORD` | Recomendada | `change-me-superadmin-password` | Necessaria para criacao inicial |
 | `SUPERADMIN_NAME` | Nao | `Root` | Nome exibido na conta inicial |
+| `SEED_SUPERADMIN_ON_STARTUP` | Nao | `false` | Em producao, mantenha `false`; habilite apenas para bootstrap controlado |
+| `SUPERADMIN_PROMOTE_IF_EXISTS` | Nao | `false` | Promove um usuario existente para `SUPERADMIN` somente quando a elevacao automatica for intencional |
 
 ### Proxy e origem confiavel
 
@@ -638,6 +640,7 @@ Essas variaveis sao aceitas pelo codigo para origem publica e fallback do fronte
 | --- | --- | --- |
 | `APP_URL` | Reverse proxy, dominio publico, HTTPS terminado fora do container | Ajuda a validacao de origem em mutacoes e serve de base publica para links de reset |
 | `NEXT_PUBLIC_APP_URL` | Mesmo cenario acima | Fallback para a mesma validacao, consumo frontend e build da imagem Docker |
+| `TRUST_PROXY_HEADERS` | Quando houver Nginx/Traefik/ALB confiavel na frente da app | Permite confiar em `X-Forwarded-Host`, `X-Forwarded-Proto`, `X-Forwarded-For` e `X-Real-IP` |
 
 ### Observacoes importantes
 
@@ -645,6 +648,7 @@ Essas variaveis sao aceitas pelo codigo para origem publica e fallback do fronte
 - `JWT_SECRET` com menos de 32 caracteres quebra a inicializacao do fluxo de autenticacao.
 - `INTERNAL_API_KEY` com menos de 24 caracteres nao eh aceita no fluxo `requireRequestAuthOrInternal(...)`.
 - `APP_BASE_URL` e `APP_URL` nao sao intercambiaveis: o primeiro eh interno ao Compose; o segundo precisa ser acessivel pelo navegador do usuario.
+- `TRUST_PROXY_HEADERS` deve permanecer `false` quando a aplicacao estiver exposta diretamente; habilite apenas atras de proxy confiavel.
 
 ## Execucao Local
 
@@ -711,15 +715,18 @@ Abra `http://localhost:3000`.
 
 | Servico | Funcao | Healthcheck | Porta publicada |
 | --- | --- | --- | --- |
-| `mysql` | Persistencia MySQL 8.4 | `mysqladmin ping` em `monitoring-mysql` | `${MYSQL_HOST_PORT}:${MYSQL_PORT}` |
-| `web` | UI Next.js, APIs, SSE, bootstrap de schema e seed | `GET /api/health` em `monitoring-web` | `${HOST_PORT}:${PORT}` |
+| `mysql` | Persistencia MySQL 8.4 | `mysqladmin ping` em `mysql` | Nao publica porta por padrao; acesso interno por DNS `mysql:3306` |
+| `web` | UI Next.js, APIs, SSE, bootstrap de schema e seed | `GET /api/health` em `web` | `${HOST_PORT}:${PORT}` |
 | `worker` | Cron de sincronizacao GDMS | Depende do `web` healthy | Nao publica porta |
 
 ### Convencoes atuais do Compose
 
 - `web` e `worker` carregam variaveis operacionais a partir de `./.env` via `env_file`.
 - O build da imagem recebe `NEXT_PUBLIC_APP_NAME` e `NEXT_PUBLIC_APP_URL` como `build.args`.
-- Os `healthcheck`s nao usam `localhost` ou `127.0.0.1`; a stack usa os nomes de container/servico para evitar ambiguidade em execucao de producao.
+- Os `healthcheck`s nao usam `localhost` ou `127.0.0.1`; a stack usa os nomes de servico Docker (`mysql` e `web`) para evitar ambiguidade em execucao de producao.
+- O MySQL nao publica porta externamente por padrao; a aplicacao acessa o banco por DNS interno `mysql:3306`.
+- O `web` sobe pelo `server.js` gerado em `.next/standalone`, que eh o modo recomendado para producao com `output: "standalone"`.
+- `web` e `worker` usam `no-new-privileges` e `cap_drop: [ALL]` para reduzir a superficie do container.
 
 ### Pre-flight de producao
 
@@ -728,10 +735,12 @@ Antes do primeiro `up`, valide:
 - `JWT_SECRET` com 32+ caracteres.
 - `INTERNAL_API_KEY` com 24+ caracteres.
 - `COOKIE_SECURE=true` em ambiente HTTPS.
-- `DATABASE_URL` apontando para `mysql:3307` dentro do Compose atual.
+- `DATABASE_URL` apontando para `mysql:3306` dentro do Compose atual.
 - `APP_URL` apontando para a URL publica real da aplicacao.
 - `NEXT_PUBLIC_APP_URL` alinhada com a URL publica quando o frontend precisar refletir esse host.
+- `TRUST_PROXY_HEADERS=true` apenas se houver reverse proxy confiavel encaminhando e sanitizando `X-Forwarded-*`.
 - `APP_BASE_URL=http://web:3000` para o worker.
+- `SEED_SUPERADMIN_ON_STARTUP=false` em producao normal; execute o seed apenas de forma controlada.
 - `PASSWORD_RESET_BASE_URL` se os links de email precisarem usar um host diferente do `APP_URL`.
 - credenciais SMTP preenchidas se a recuperacao de senha por email estiver habilitada.
 - Credenciais GDMS preenchidas se a integracao estiver habilitada.
@@ -754,10 +763,16 @@ docker compose logs -f worker
 curl http://localhost:3200/api/health
 ```
 
+Se precisar administrar o MySQL sem publicar a porta no host, prefira:
+
+```bash
+docker compose exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD"
+```
+
 O fluxo de startup real do `web` eh:
 
 1. executa [`scripts/init-db.mjs`](./scripts/init-db.mjs);
-2. se `SUPERADMIN_*` estiver configurado, executa [`scripts/seed-superadmin.mjs`](./scripts/seed-superadmin.mjs);
+2. se `SEED_SUPERADMIN_ON_STARTUP=true` e `SUPERADMIN_*` estiver configurado, executa [`scripts/seed-superadmin.mjs`](./scripts/seed-superadmin.mjs);
 3. sobe o servidor Next.js em modo producao;
 4. o `worker` aguarda `web` saudavel e passa a chamar `POST /api/integrations/gdms/sync`.
 
@@ -876,7 +891,7 @@ O `package.json` declara `npm run test` e `npm run test:e2e`, mas a base atual n
 
 ## Troubleshooting
 
-### `monitoring-web` nao fica healthy
+### `web` nao fica healthy
 
 Sintomas comuns:
 
@@ -886,7 +901,7 @@ Sintomas comuns:
 
 Checklist:
 
-- confirme `DATABASE_URL` com host `mysql` e porta `3307` dentro do Compose;
+- confirme `DATABASE_URL` com host `mysql` e porta `3306` dentro do Compose;
 - valide se `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD` e `DATABASE_URL` estao coerentes;
 - acompanhe `docker compose logs -f mysql`;
 - se a falha comecou apos mexer no schema ou no bootstrap, reconstrua a imagem `web`;
@@ -919,7 +934,7 @@ Checklist:
 
 ### Email de recuperacao chega com `0.0.0.0`, nome do container ou host interno
 
-O link de reset precisa usar uma URL publica/acessivel pelo navegador. O nome do container `web` ou `monitoring-web` nao serve para o usuario final fora da rede Docker.
+O link de reset precisa usar uma URL publica/acessivel pelo navegador. O nome do servico `web` dentro da rede Docker nao serve para o usuario final fora da infraestrutura.
 
 Checklist:
 

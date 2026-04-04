@@ -4,6 +4,7 @@ import { createMysqlConnection } from "./mysql-utils.mjs";
 const email = process.env.SUPERADMIN_EMAIL?.toLowerCase();
 const password = process.env.SUPERADMIN_PASSWORD;
 const name = process.env.SUPERADMIN_NAME || "Super Admin";
+const promoteIfExists = process.env.SUPERADMIN_PROMOTE_IF_EXISTS === "true";
 
 if (!email || !password) {
   console.log("SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD nao definidos. Seed ignorado.");
@@ -22,10 +23,15 @@ if (!email || !password) {
 
     if (exists?.id) {
       if (exists.role !== "SUPERADMIN") {
-        await connection.execute(
-          "UPDATE `User` SET `role` = 'SUPERADMIN', `isBlocked` = 0 WHERE `id` = ?",
-          [exists.id]
-        );
+        if (promoteIfExists) {
+          await connection.execute(
+            "UPDATE `User` SET `role` = 'SUPERADMIN', `isBlocked` = 0 WHERE `id` = ?",
+            [exists.id]
+          );
+          console.log("Usuario promovido para SUPERADMIN:", email);
+        } else {
+          console.log("Usuario existente nao foi promovido automaticamente. Use SUPERADMIN_PROMOTE_IF_EXISTS=true se isso for intencional.");
+        }
       }
       console.log("Superadmin ja existe:", email);
     } else {

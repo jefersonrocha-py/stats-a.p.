@@ -11,10 +11,9 @@ x-app-image: &app_image
 services:
   mysql:
     image: ${MYSQL_IMAGE}
-    container_name: monitoring-mysql
     restart: unless-stopped
     command:
-      - --port=${MYSQL_PORT}
+      - --port=${MYSQL_PORT:-3306}
       - --character-set-server=${MYSQL_CHARSET}
       - --collation-server=${MYSQL_COLLATION}
     environment:
@@ -22,12 +21,12 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    ports:
-      - "${MYSQL_HOST_PORT}:${MYSQL_PORT}"
+    expose:
+      - "${MYSQL_PORT:-3306}"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h monitoring-mysql -P ${MYSQL_PORT} -uroot -p${MYSQL_ROOT_PASSWORD} --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h mysql -P ${MYSQL_PORT:-3306} -uroot -p${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -37,8 +36,8 @@ services:
 
   web:
     <<: *app_image
-    container_name: monitoring-web
     restart: unless-stopped
+    init: true
     env_file:
       - ./.env
     environment:
@@ -49,18 +48,22 @@ services:
     ports:
       - "${HOST_PORT}:${PORT}"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://monitoring-web:' + (process.env.PORT || 3000) + '/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://web:' + (process.env.PORT || 3000) + '/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     networks:
       - app_net
 
   worker:
     <<: *app_image
-    container_name: monitoring-gdms-cron
     restart: unless-stopped
+    init: true
     env_file:
       - ./.env
     environment:
@@ -72,6 +75,10 @@ services:
       web:
         condition: service_healthy
     entrypoint: ["node", "scripts/gdms-cron.mjs"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     networks:
       - app_net
 

@@ -2,6 +2,10 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
+function shouldTrustProxyHeaders() {
+  return process.env.TRUST_PROXY_HEADERS === "true";
+}
+
 export function isUnsafeMethod(method?: string) {
   const normalized = (method ?? "GET").toUpperCase();
   return !["GET", "HEAD", "OPTIONS"].includes(normalized);
@@ -30,8 +34,12 @@ function getExpectedOrigins(req: Request) {
   const requestOrigin = normalizeOrigin(req.url);
   if (requestOrigin) origins.add(requestOrigin);
 
-  const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const forwardedProto = shouldTrustProxyHeaders()
+    ? req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim()
+    : null;
+  const forwardedHost = shouldTrustProxyHeaders()
+    ? req.headers.get("x-forwarded-host")?.split(",")[0]?.trim()
+    : null;
   if (forwardedProto && forwardedHost) {
     origins.add(`${forwardedProto}://${forwardedHost}`.toLowerCase());
   }

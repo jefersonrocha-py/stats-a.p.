@@ -2,6 +2,10 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
+function shouldTrustProxyHeaders() {
+  return process.env.TRUST_PROXY_HEADERS === "true";
+}
+
 type RateLimitEntry = {
   count: number;
   resetAt: number;
@@ -41,14 +45,16 @@ function pruneExpiredEntries(store: Map<string, RateLimitEntry>, now: number) {
 }
 
 export function getClientIp(req: Request) {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const [first] = forwardedFor.split(",");
-    if (first?.trim()) return first.trim();
-  }
+  if (shouldTrustProxyHeaders()) {
+    const forwardedFor = req.headers.get("x-forwarded-for");
+    if (forwardedFor) {
+      const [first] = forwardedFor.split(",");
+      if (first?.trim()) return first.trim();
+    }
 
-  const realIp = req.headers.get("x-real-ip");
-  if (realIp?.trim()) return realIp.trim();
+    const realIp = req.headers.get("x-real-ip");
+    if (realIp?.trim()) return realIp.trim();
+  }
 
   return "unknown";
 }
