@@ -5,6 +5,7 @@ const email = process.env.SUPERADMIN_EMAIL?.toLowerCase();
 const password = process.env.SUPERADMIN_PASSWORD;
 const name = process.env.SUPERADMIN_NAME || "Super Admin";
 const promoteIfExists = process.env.SUPERADMIN_PROMOTE_IF_EXISTS === "true";
+const syncPasswordIfExists = process.env.SUPERADMIN_SYNC_PASSWORD_IF_EXISTS === "true";
 
 if (!email || !password) {
   console.log("SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD nao definidos. Seed ignorado.");
@@ -16,28 +17,53 @@ if (!email || !password) {
 
   try {
     const [rows] = await connection.execute(
-      "SELECT `id`, `role` FROM `User` WHERE `email` = ? LIMIT 1",
+      "SELECT `id`, `name`, `role` FROM `User` WHERE `email` = ? LIMIT 1",
       [email]
     );
     const exists = rows[0];
+    const passwordHash = await bcrypt.hash(password, 12);
 
     if (exists?.id) {
+      const assignments = [];
+      const values = [];
+
+      if (exists.name !== name) {
+        assignments.push("`name` = ?");
+        values.push(name);
+      }
+
       if (exists.role !== "SUPERADMIN") {
         if (promoteIfExists) {
-          await connection.execute(
-            "UPDATE `User` SET `role` = 'SUPERADMIN', `isBlocked` = 0 WHERE `id` = ?",
-            [exists.id]
-          );
-          console.log("Usuario promovido para SUPERADMIN:", email);
+          assignments.push("`role` = 'SUPERADMIN'");
         } else {
           console.log("Usuario existente nao foi promovido automaticamente. Use SUPERADMIN_PROMOTE_IF_EXISTS=true se isso for intencional.");
         }
       }
-      console.log("Superadmin ja existe:", email);
+
+      if (exists.role === "SUPERADMIN" || promoteIfExists) {
+        assignments.push("`isBlocked` = 0", "`suspendedUntil` = NULL");
+        if (syncPasswordIfExists) {
+          assignments.push("`passwordHash` = ?");
+          values.push(passwordHash);
+        }
+      }
+
+      if (assignments.length) {
+        values.push(exists.id);
+        await connection.execute(
+          `UPDATE \`User\` SET ${assignments.join(", ")} WHERE \`id\` = ?`,
+          values
+        );
+      }
+
+      if (exists.role !== "SUPERADMIN" && promoteIfExists) {
+        console.log("Usuario promovido para SUPERADMIN:", email);
+      } else {
+        console.log("Superadmin ja existe:", email);
+      }
     } else {
-      const passwordHash = await bcrypt.hash(password, 12);
       await connection.execute(
-        "INSERT INTO `User` (`name`, `email`, `passwordHash`, `role`, `isBlocked`, `createdAt`) VALUES (?, ?, ?, 'SUPERADMIN', 0, ?)",
+        "INSERT INTO `User` (`name`, `email`, `passwordHash`, `role`, `isBlocked`, `suspendedUntil`, `createdAt`) VALUES (?, ?, ?, 'SUPERADMIN', 0, NULL, ?)",
         [name, email, passwordHash, new Date()]
       );
       console.log("Superadmin criado:", email);
