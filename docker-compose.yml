@@ -58,7 +58,10 @@ services:
     cap_drop:
       - ALL
     networks:
-      - app_net
+      app_net:
+      web:
+        aliases:
+          - monitoring-grandstream-web
 
   worker:
     <<: *app_image
@@ -87,3 +90,5 @@ volumes:
 
 networks:
   app_net:
+  web:
+    external: true
