@@ -77,20 +77,22 @@ const TILE_LIGHT: BasemapDefinition = {
 };
 
 const JOYSTICK_RADIUS = 26;
+const MAP_MIN_ZOOM = 8;
+const MARKER_BASE_WIDTH = 32;
 
 function faToSvgMarkup(icon: IconDefinition, color: string, scale = 1) {
   const def = icon.icon as unknown as [number, number, string[], string, string | string[]];
   const [width, height, , , paths] = def;
   const d = Array.isArray(paths) ? paths.join("") : paths;
-  const viewWidth = width * scale;
-  const viewHeight = height * scale;
+  const viewWidth = MARKER_BASE_WIDTH * scale;
+  const viewHeight = (height / width) * viewWidth;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${viewWidth}" height="${viewHeight}" viewBox="0 0 ${width} ${height}" aria-hidden="true" style="display:block;filter:drop-shadow(0 6px 10px rgba(0,0,0,0.35));">
     <path d="${d}" fill="${color}" />
   </svg>`;
 }
 
-function makeMarkerElement(color: string, label: string, scale = 1.05, isPreview = false) {
+function makeMarkerElement(color: string, label: string, scale = 1, isPreview = false) {
   const element = document.createElement("button");
   element.type = "button";
   element.title = label;
@@ -314,7 +316,7 @@ export default function MapClient() {
       style: buildMapStyle(appliedBasemapRef.current),
       center: CITY_CENTER,
       zoom: 12,
-      minZoom: 10,
+      minZoom: MAP_MIN_ZOOM,
       maxZoom: 19,
       minPitch: 0,
       maxPitch: 0,
@@ -322,7 +324,6 @@ export default function MapClient() {
       touchZoomRotate: true,
       touchPitch: false,
       doubleClickZoom: true,
-      maxBounds: CITY_BOUNDS,
       attributionControl: { compact: true },
       renderWorldCopies: false,
     });
@@ -498,7 +499,7 @@ export default function MapClient() {
 
     if (openModal && tempPos) {
       const previewMarker = new maplibregl.Marker({
-        element: makeMarkerElement("#38bdf8", "Posicao selecionada", 1.05, true),
+        element: makeMarkerElement("#38bdf8", "Posicao selecionada", 1, true),
         anchor: "bottom",
         rotationAlignment: "viewport",
         pitchAlignment: "viewport",
